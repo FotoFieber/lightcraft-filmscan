@@ -28,6 +28,7 @@ pub enum Section {
     Calibration,
     PointColor,
     RedEye,
+    Negative,
 }
 
 impl Section {
@@ -49,6 +50,7 @@ impl Section {
             Section::Calibration => "Calibration",
             Section::PointColor => "Point Color",
             Section::RedEye => "Red Eye",
+            Section::Negative => "Convert Negative",
         }
     }
 }
@@ -294,6 +296,19 @@ controls! {
     "calibration.blueHue" => calibration.blue_hue, "Blue Hue", Calibration, -100, 100, 0, 1, 0, Gradient { from: "#30a0d0", to: "#8040d0" };
     "calibration.blueSat" => calibration.blue_sat, "Blue Saturation", Calibration, -100, 100, 0, 1, 0, Gradient { from: "#7a7a7a", to: "#3a60e0" };
     "crop.angle" => crop.geometry.angle, "Straighten", Geometry, -45, 45, 0, 0.01, 2, Centered;
+    "negative.exposure" => negative.exposure, "Exposure", Negative, -5, 5, 0, 0.01, 2, Centered;
+    "negative.brightness" => negative.brightness, "Brightness", Negative, -50, 50, 0, 1, 0, Centered;
+    "negative.contrast" => negative.contrast, "Contrast", Negative, -50, 50, 0, 1, 0, Centered;
+    "negative.temp" => negative.temp, "Temp", Negative, -50, 50, 0, 1, 0, Gradient { from: "#3a78d8", to: "#e0b030" };
+    "negative.tint" => negative.tint, "Tint", Negative, -50, 50, 0, 1, 0, Gradient { from: "#3aa040", to: "#c040b0" };
+    "negative.saturation" => negative.saturation, "Saturation", Negative, -50, 50, 0, 1, 0, Gradient { from: "#7a7a7a", to: "#e04a3a" };
+    "negative.highlights" => negative.highlights, "Highlights", Negative, -50, 50, 0, 1, 0, Centered;
+    "negative.shadows" => negative.shadows, "Shadows", Negative, -50, 50, 0, 1, 0, Centered;
+    "negative.whites" => negative.whites, "Whites", Negative, -50, 50, 0, 1, 0, Centered;
+    "negative.blacks" => negative.blacks, "Blacks", Negative, -50, 50, 0, 1, 0, Centered;
+    "negative.fade" => negative.fade, "Fade", Negative, -100, 100, 0, 1, 0, Centered;
+    "negative.glow" => negative.glow, "Glow", Negative, -100, 100, 0, 1, 0, Centered;
+    "negative.range" => negative.range, "Dynamic Range", Negative, 1, 10, 3, 0.1, 1, Plain;
 }
 
 /// Template specs of the indexed controls (`<family>.<field>`; addressed as `<family>.<i>.<field>`).
