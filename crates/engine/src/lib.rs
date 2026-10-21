@@ -1495,3 +1495,6 @@ pub(crate) fn orientation_change(from: lightcraft_geom::Orientation, to: lightcr
         })
     })
 }
+
+#[cfg(test)]
+mod tests_negative;

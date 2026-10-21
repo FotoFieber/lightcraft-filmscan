@@ -13,7 +13,7 @@ fn active(s: &Session, c: &str) -> Result<PhotoId> {
 }
 
 /// Modify the active photo's settings with `f` and commit (or preview during an interaction).
-fn edit(s: &mut Session, c: &str, label: &str, f: impl FnOnce(&mut DevelopSettings) -> Result<()>) -> Result<Value> {
+pub(super) fn edit(s: &mut Session, c: &str, label: &str, f: impl FnOnce(&mut DevelopSettings) -> Result<()>) -> Result<Value> {
     let id = active(s, c)?;
     let mut d = (*s.develop_of(id).unwrap_or_default()).clone();
     f(&mut d)?;
@@ -502,7 +502,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 let src = s.source_now(id, SourceLevel::Thumb).map_err(|e| bad("develop.autoBwMix", e))?;
                 let info = s.source_info(id);
                 let d = s.develop_of(id).unwrap_or_default();
-                let m = lightcraft_pipeline::auto::auto_bw_mix(&src, &info, &d);
+                let m = lightcraft_pipeline::auto::auto_bw_mix(&lightcraft_pipeline::negative::positive(&src, &d), &info, &d);
                 edit(s, "develop.autoBwMix", "Auto B&W Mix", |d| {
                     d.treatment = Treatment::Bw;
                     let b = &mut d.bw_mix;
@@ -533,7 +533,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 };
                 let info = s.source_info(id);
                 let d = s.develop_of(id).unwrap_or_default();
-                let a = lightcraft_pipeline::auto::auto_tone(&src, &info, &d);
+                let a = lightcraft_pipeline::auto::auto_tone(&lightcraft_pipeline::negative::positive(&src, &d), &info, &d);
                 if first.is_none() {
                     first = Some(serde_json::to_value(a).unwrap_or_default());
                 }
@@ -574,7 +574,8 @@ pub fn specs() -> Vec<CommandSpec> {
                     WbMode::AsShot => (info.as_shot_temp, info.as_shot_tint),
                     WbMode::Auto => {
                         let src = s.source_now(id, SourceLevel::Thumb).map_err(|e| bad("develop.wb", e))?;
-                        lightcraft_pipeline::auto::auto_wb(&src, &info)
+                        let d = s.develop_of(id).unwrap_or_default();
+                        lightcraft_pipeline::auto::auto_wb(&lightcraft_pipeline::negative::positive(&src, &d), &info)
                     }
                     m => m
                         .preset()
@@ -604,8 +605,8 @@ pub fn specs() -> Vec<CommandSpec> {
             let src = s.source_now(id, SourceLevel::Thumb).map_err(|e| bad("develop.wbPick", e))?;
             let info = s.source_info(id);
             let d = s.develop_of(id).unwrap_or_default();
-            // Sample a small neighbourhood in the oriented source.
-            let o = src.oriented(d.orientation);
+            // Sample a small neighbourhood in the oriented source (the positive, of a negative).
+            let o = lightcraft_pipeline::negative::positive(&src, &d).oriented(d.orientation);
             let (cx, cy) = ((x.clamp(0.0, 1.0) * o.width as f64) as isize, (y.clamp(0.0, 1.0) * o.height as f64) as isize);
             let mut acc = [0.0f32; 3];
             for dy in -2..=2 {
