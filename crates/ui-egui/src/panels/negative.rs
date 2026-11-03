@@ -130,7 +130,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     padded(ui, |ui| {
         let mut on = n.enabled;
         let r = ui.checkbox(&mut on, crate::i18n::tr("Film negative"));
-        register(ui.ctx(), "check:negativeOn", r.rect);
+        register(ui, "check:negativeOn", r.rect);
         if r.changed() {
             set(app, ui, json!({"on": on}));
         }
