@@ -1380,6 +1380,21 @@ fn ui_commands_10(app: &mut LightcraftApp, ctx: &egui::Context, id: &str, p: &Va
     Some(r)
 }
 
+/// Photo ▸ Convert Negative: turns the negative conversion on (once) and opens its panel in Detail.
+fn photo_convert_negative_command(app: &mut LightcraftApp) -> Result<Value, String> {
+    let Some(id) = app.session.active() else { return Err("no photo selected".into()) };
+    let on = app.session.develop_of(id).is_some_and(|d| d.negative.enabled);
+    if !on {
+        app.run("develop.negative", json!({}))?;
+    }
+    app.ui.right = RightPanel::Negative;
+    app.ui.view = ViewMode::Detail;
+    if !app.ui.tool.starts_with("neg") {
+        app.ui.tool.clear();
+    }
+    Ok(json!({"converted": true}))
+}
+
 /// Part 11 of 12 of the UI commands; `None` means the id is not one of this part's.
 fn ui_commands_11(app: &mut LightcraftApp, ctx: &egui::Context, id: &str, p: &Value) -> Option<Result<Value, String>> {
     let r: Result<Value, String> = match id {
@@ -1398,19 +1413,7 @@ fn ui_commands_11(app: &mut LightcraftApp, ctx: &egui::Context, id: &str, p: &Va
             Ok(Value::Null)
         }
         "file.findMissing" => file_find_missing_command(app, id, p),
-        "photo.convertNegative" => {
-            let Some(id) = app.session.active() else { return Some(Err("no photo selected".into())) };
-            let on = app.session.develop_of(id).is_some_and(|d| d.negative.enabled);
-            if !on && let Err(e) = app.run("develop.negative", json!({})) {
-                return Some(Err(e));
-            }
-            app.ui.right = RightPanel::Negative;
-            app.ui.view = ViewMode::Detail;
-            if !app.ui.tool.starts_with("neg") {
-                app.ui.tool.clear();
-            }
-            Ok(json!({"converted": true}))
-        }
+        "photo.convertNegative" => photo_convert_negative_command(app),
         "photo.tagFromTracklog" => photo_tag_from_tracklog_command(app, ctx, id, p),
         "photo.locate" => photo_locate_command(app, p),
         "file.addFromDevice" => {
