@@ -603,11 +603,10 @@ pub fn colour_noise(src: &Rgb32f, info: &SourceInfo, p: &Plan<'_>) -> Option<nrc
     Some(noise)
 }
 
-/// Whether the scene-linear stage needs work only the CPU does (defringe, spot removal, Convert Negative).
+/// Whether the scene-linear stage needs work only the CPU does (the camera's local tone mapping,
+/// Convert Negative): the GPU renderer then runs [`lin_cpu`] instead of its own kernels.
 pub fn lin_needs_cpu(s: &DevelopSettings, info: &SourceInfo) -> bool {
-    let o = &s.optics;
-    let defringe = s.section_enabled("optics") && (o.defringe_purple_amount > 0.0 || o.defringe_green_amount > 0.0);
-    defringe || !s.spots.is_empty() || local_tone::enabled(info, s) || negative::enabled(s)
+    local_tone::enabled(info, s) || negative::enabled(s)
 }
 
 /// The white-balanced, defringed, retouched image (before noise reduction): the CPU part of the

@@ -505,6 +505,11 @@ fn cases() -> Vec<(&'static str, Edit)> {
             s.spots = vec![Spot { points: vec![Point::new(0.3, 0.3)], size: 0.03, source_offset: Some(Point::new(0.1, 0.0)), ..Default::default() }];
             s.optics.defringe_purple_amount = 5.0;
         }),
+        // Convert Negative runs on the CPU inside a GPU render: the GPU used to skip it, leaving the negative
+        ("convert negative", |s| {
+            s.negative.enabled = true;
+            s.optics.defringe_purple_amount = 5.0;
+        }),
     ]
 }
 
