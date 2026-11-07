@@ -3,7 +3,9 @@
 //! sliders are develop controls (`negative.*`, set with `develop.set`).
 
 use lightcraft_develop::{DevelopSettings, Negative};
+use lightcraft_geom::{CropGeometry, MIN_CROP_FRACTION, Rect};
 use lightcraft_pipeline::negative::film::{Look, Preset, Tone, WbPreset};
+use lightcraft_pipeline::negative_frame::{self, Margin};
 use serde_json::{Value, json};
 
 use super::{CommandSpec, bad, cmd, f64_req, has_active, str_param};
@@ -37,13 +39,73 @@ fn choice(p: &Value, key: &str, c: &str, known: impl Fn(&str) -> bool) -> Result
 fn measure(s: &mut Session, id: crate::PhotoId, border: f64, c: &str) -> Result<lightcraft_develop::NegativeMeasurement> {
     let src = s.source_now(id, SourceLevel::Preview).map_err(|e| bad(c, e))?;
     let d = s.develop_of(id).unwrap_or_default();
-    let o = src.oriented(d.orientation);
-    let r = d.crop.geometry.rect;
+    measure_in(&src.oriented(d.orientation), d.crop.geometry.rect, border, c)
+}
+
+/// Measures the oriented scan `o` inside `r` (normalized), `border` in from each edge.
+fn measure_in(o: &lightcraft_raster::Rgb32f, r: Rect, border: f64, c: &str) -> Result<lightcraft_develop::NegativeMeasurement> {
     let (w, h) = (o.width as f64, o.height as f64);
     let at = |v: f64, n: f64| if v.is_finite() { (v.clamp(0.0, 1.0) * n).round() as usize } else { 0 };
     let (x0, y0, x1, y1) = (at(r.x0, w), at(r.y0, h), at(r.x1, w), at(r.y1, h));
-    let framed = if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o };
+    let framed = if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o.clone() };
     lightcraft_pipeline::negative::measure(&framed, border).map_err(|e| bad(c, e))
+}
+
+/// `develop.negativeZap`: finds the picture on the active scan, then straightens and crops to it,
+/// takes the film base from the rebate and measures the picture, as one edit.
+fn zap(s: &mut Session, p: &Value) -> Result<Value> {
+    let c = "develop.negativeZap";
+    let margin = match p.get("margin") {
+        None | Some(Value::Null) => Margin::Inside,
+        Some(Value::String(m)) => Margin::parse(m).ok_or_else(|| bad(c, format!("unknown margin `{m}` (inside, edge or border)")))?,
+        Some(v) => return Err(bad(c, format!("`margin` must be inside, edge or border, not {v}"))),
+    };
+    let ratio = match p.get("format") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(f)) => negative_frame::format_ratio(f).map_err(|e| bad(c, e))?,
+        Some(v) => return Err(bad(c, format!("`format` must be a film format id, not {v}"))),
+    };
+    let id = s.active().ok_or_else(|| bad(c, "no active photo"))?;
+    let src = s.source_now(id, SourceLevel::Preview).map_err(|e| bad(c, e))?;
+    let d = s.develop_of(id).unwrap_or_default();
+    let o = src.oriented(d.orientation);
+    let frame = negative_frame::detect(&o, ratio).map_err(|e| bad(c, e))?;
+    let (w, h) = super::develop::crop_dims(s, id);
+    let rect = frame.crop(margin, o.width as f64, o.height as f64);
+    let geometry = CropGeometry { rect, angle: frame.angle }.constrained(w, h);
+    let min = MIN_CROP_FRACTION * w.min(h);
+    if geometry.rect.width() * w < min || geometry.rect.height() * h < min {
+        return Err(bad(c, "no film frame found"));
+    }
+    // measured on the picture itself: nothing of the rebate left to leave out
+    let measured = measure_in(&o, geometry.rect, 0.0, c)?;
+    let mut out = Value::Null;
+    super::develop::edit(s, c, "Zap", |d: &mut DevelopSettings| {
+        d.crop.geometry = geometry;
+        let n = &mut d.negative;
+        n.enabled = true;
+        n.measured = Some(measured);
+        if let Some(b) = frame.base {
+            // the picked base only counts in Advanced
+            n.advanced = true;
+            n.base = Some(b);
+        }
+        out = state(n);
+        Ok(())
+    })?;
+    if let Some(o) = out.as_object_mut() {
+        o.insert(
+            "zap".into(),
+            json!({
+                "angle": geometry.angle,
+                "rect": [geometry.rect.x0, geometry.rect.y0, geometry.rect.x1, geometry.rect.y1],
+                "base": frame.base,
+                "sprockets": frame.sprockets,
+                "sidesFound": frame.sides_found,
+            }),
+        );
+    }
+    Ok(out)
 }
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -168,6 +230,15 @@ pub fn specs() -> Vec<CommandSpec> {
                 })?;
                 Ok(out)
             }
+        ),
+        cmd!(
+            "develop.negativeZap",
+            "Zap!",
+            [],
+            None,
+            "{margin?: inside|edge|border (default inside), format?: auto|35mm|half|xpan|645|66|67|68|69|612|617 (default auto: no aspect assumed)} — finds the picture on the scan of a negative (the holder, the film's rebate and its sprocket holes left out), straightens and crops to it, takes the film base from the rebate and measures the picture; one undo step",
+            has_active,
+            zap
         ),
     ]
 }

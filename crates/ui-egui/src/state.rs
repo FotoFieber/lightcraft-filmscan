@@ -246,6 +246,11 @@ pub struct UiState {
     /// the photo that applies to: not an edit, and forgotten on moving to another photo or quitting.
     #[serde(skip)]
     pub grading_hidden: Option<(lightcraft_catalog::PhotoId, [bool; 3])>,
+    /// Convert Negative's Zap!: where the crop sits on the picture's edge ("inside" | "edge" |
+    /// "border") and the film format that places a side the scan doesn't show
+    /// (`lightcraft_pipeline::negative_frame::FORMATS`).
+    pub negative_zap_margin: String,
+    pub negative_zap_format: String,
     /// Active on-canvas tool: "", "brush", "linear", "radial", "wbPicker", "negBase", "negGray", "straighten", "remove".
     pub tool: String,
     /// Guided Upright: the selected guide (photo id + index) while the tool is open. A Delete /
@@ -476,6 +481,8 @@ impl Default for UiState {
             mixer_mode: "hue".into(),
             grading_mode: "3way".into(),
             grading_hidden: None,
+            negative_zap_margin: "inside".into(),
+            negative_zap_format: "auto".into(),
             tool: String::new(),
             selected_guide: None,
             brush_size: 0.04,

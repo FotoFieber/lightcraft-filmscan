@@ -41,6 +41,7 @@ pub mod lut;
 pub mod mask_space;
 pub mod masks;
 pub mod negative;
+pub mod negative_frame;
 pub mod nrc_joint;
 #[cfg(test)]
 mod nrc_joint_reference;

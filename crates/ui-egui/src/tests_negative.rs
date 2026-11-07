@@ -62,3 +62,61 @@ fn photo_menu_opens_the_panel_and_the_selector_picks_the_film_base() {
     let n = negative(&h);
     assert!(!n.enabled && n.advanced && n.measured.is_some(), "{n:?}");
 }
+
+/// A PNG of a straight 900 × 600 scan of one 35 mm negative frame in a holder: holder, orange base,
+/// sprocket holes, and a denser, textured picture on 120..780 × 80..520.
+fn negative_png(path: &std::path::Path) {
+    let base = [0.62f32, 0.26, 0.07];
+    let img = lightcraft_raster::Rgb32f::from_fn(900, 600, |x, y| {
+        let (x, y) = (x as f64, y as f64);
+        if !(60.0..840.0).contains(&x) || !(40.0..560.0).contains(&y) {
+            return [0.004, 0.003, 0.003];
+        }
+        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 196.0 + (y - cy).powi(2) / 64.0 < 1.0;
+        if hole(38.0) || hole(548.0) {
+            return [0.92, 0.93, 0.97];
+        }
+        if !(120.0..780.0).contains(&x) || !(80.0..520.0).contains(&y) {
+            return base;
+        }
+        let t = 0.2 + 0.25 * ((x / 37.0).sin() * (y / 23.0).cos()).abs() + if ((x / 90.0) as i32 + (y / 70.0) as i32) % 2 == 0 { 0.2 } else { 0.0 };
+        base.map(|c| c * t as f32)
+    });
+    let png = lightcraft_codecs::encode::encode_png(&lightcraft_codecs::encode::EncodeImage::rgba8(&img.to_srgb8()), &Default::default()).unwrap();
+    std::fs::write(path, png).unwrap();
+}
+
+#[test]
+fn zap_crops_to_the_frame_with_the_panels_choices_and_undoes_in_one_step() {
+    let dir = std::env::temp_dir().join(format!("lc-ui-zap-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("negative.png");
+    negative_png(&path);
+    let mut session = lightcraft_engine::Session::new().with_fs();
+    session.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let app = LightcraftApp::new(session, Services { png: None, ..Default::default() });
+    let mut h = Headless::new(app, [1400.0, 900.0], 1.0);
+    let r = h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    for w in ["button:negative-zap", "dropdown:negative-zapMargin", "dropdown:negative-zapFormat"] {
+        assert!(h.app.widgets.iter().any(|(id, _)| id == w), "{w} on the panel");
+    }
+    let id = h.app.session.active().unwrap();
+    let before = h.app.session.develop_of(id).unwrap();
+    h.app.ui.negative_zap_margin = "edge".into();
+    h.app.ui.negative_zap_format = "35mm".into();
+    let r = h.request("ui.clickWidget", json!({"id": "button:negative-zap"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    let d = h.app.session.develop_of(id).unwrap();
+    let g = d.crop.geometry.rect;
+    let want = [120.0 / 900.0, 80.0 / 600.0, 780.0 / 900.0, 520.0 / 600.0];
+    assert!(want.iter().zip([g.x0, g.y0, g.x1, g.y1]).all(|(a, b)| (a - b).abs() < 0.015), "{g:?} toast {:?}", h.app.ui.toast);
+    assert!(d.negative.advanced && d.negative.base.is_some(), "the base shows in the Film Base row");
+    // Edit ▸ Undo takes the whole Zap! back
+    h.request("engine.execute", json!({"command": "edit.undo"}), T);
+    h.settle(SETTLE);
+    assert_eq!(h.app.session.develop_of(id).unwrap().crop, before.crop);
+    std::fs::remove_dir_all(&dir).ok();
+}
