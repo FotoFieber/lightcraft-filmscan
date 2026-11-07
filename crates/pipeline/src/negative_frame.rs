@@ -25,7 +25,9 @@
 //! 7. **Gaps between frames.** Lines across the film that are unexposed all the way across:
 //!    hardly varying in brightness, as thin as the base and clearly thinner than the film's typical
 //!    line, in a narrow run. Each is a near sure end of the picture on its side (a strip's
-//!    neighbouring frames end there), weighed with the other places that side offers.
+//!    neighbouring frames end there): what lies outside it is never the picture, even where a
+//!    bright gap at the film's end looks like picture reaching the edge. Its depth says nothing
+//!    about the rebate of the other sides.
 //! 8. **Sprocket holes.** Along each long side of 35 mm film, the lines that light crosses in a run
 //!    of holes. The crop's long sides go by them rather than by the picture: just outside holes
 //!    that show whole (they stay in the picture, film between them and the film's edge), just
@@ -72,17 +74,22 @@ const HOLE_EDGE_SLACK: usize = 1;
 const HOLE_SQUARE_MIN: f32 = 0.6;
 /// A gap between frames: a line across the film whose brightness varies less than this (natural
 /// log, 10 % to 90 %; a picture's lines vary 0.5 to 2), within this of the thinnest such lines
-/// (the film base), over at least this many lines.
+/// (the film base), over at least this share of the film's length (a frame gap is a few per cent of
+/// it; a line or two at the film's edge is the holder's shadow).
 const GAP_SPREAD: f32 = 0.25;
 const GAP_LEVEL: f32 = 0.3;
-const GAP_MIN: usize = 2;
+const GAP_WIDTH_MIN: f64 = 0.01;
+/// The share of a gap's line that is film (not light or holder).
+const GAP_FILM_SHARE: f64 = 0.9;
 /// A gap is at least this much thinner than the film's typical line (natural log of luminance).
 const GAP_CONTRAST: f32 = 0.15;
 /// A gap is at most this share of the film's length (a frame gap is a few per cent of it; medium
 /// format holders show up to about a tenth).
 const GAP_WIDTH_MAX: f64 = 0.15;
-/// Without sprocket holes a gap's line is read over the film less this share at each long side.
-const GAP_TRIM: f64 = 0.15;
+/// Without sprocket holes a gap's line is read over the film less this share at each long side:
+/// nearly all of it, since a gap crosses the whole film (into the rebate) while an even stripe of
+/// the scene ends at the picture's edge.
+const GAP_TRIM: f64 = 0.03;
 /// What a gap costs as the end of a picture: hardly anything, it is unexposed film across.
 const GAP_COST: f64 = 0.05;
 /// The crop's distance from the sprocket holes (fraction of the film's extent across).
@@ -509,10 +516,10 @@ fn sprocket_share(img: &Rgb32f, film: Px, threshold: f32, light: &Light) -> f64 
 }
 
 /// The gaps between frames: runs of lines across the film (columns for a film along x) that are
-/// unexposed film all the way across. Each line is read between the sprocket holes (or over the
-/// middle of the film without them); a gap's line hardly varies in brightness there and is as thin
-/// as the thinnest such lines of the film. Runs of at least [`GAP_MIN`] lines, as `(start, end)`
-/// along the film, in analysis pixels.
+/// unexposed film all the way across. Each line is read between the sprocket holes (or over nearly
+/// all of the film without them); a gap's line is film throughout, hardly varies in brightness
+/// (its ends neither) and is as thin as the thinnest such lines of the film. Runs of at least
+/// [`GAP_WIDTH_MIN`] of the film's length, as `(start, end)` along the film, in analysis pixels.
 fn frame_gaps(lum: &Plane, img: &Rgb32f, film: Px, holes: &[Option<HoleRow>; 2], threshold: f32, light: &Light) -> Vec<(usize, usize)> {
     let along_x = film.width() >= film.height();
     let (a0, a1, l0, l1) = if along_x { (film.y0, film.y1, film.x0, film.x1) } else { (film.x0, film.x1, film.y0, film.y1) };
@@ -524,7 +531,8 @@ fn frame_gaps(lum: &Plane, img: &Rgb32f, film: Px, holes: &[Option<HoleRow>; 2],
         return Vec::new();
     }
     let at = |l: usize, a: usize| if along_x { (l, a) } else { (a, l) };
-    // each line's level (median log luminance) and spread (10 % to 90 %), film only
+    // each line's level (median log luminance) and spread (10 % to 90 %, and its ends off its
+    // level), film only
     let lines: Vec<Option<(f32, f32)>> = (l0..l1)
         .map(|l| {
             let v: Vec<f32> = (from..to)
@@ -533,10 +541,19 @@ fn frame_gaps(lum: &Plane, img: &Rgb32f, film: Px, holes: &[Option<HoleRow>; 2],
                     px(img, x, y).filter(|p| luma(*p) > threshold && !light.is(*p)).and_then(|_| px(lum, x, y))
                 })
                 .collect();
-            if v.len() * 3 < (to - from) * 2 {
+            // a gap is film all the way across: light or holder in the line is no gap (nor a
+            // scene's thin parts that read as light, between which its background is even)
+            if (v.len() as f64) < (to - from) as f64 * GAP_FILM_SHARE {
                 return None;
             }
-            Some((median(v.clone())?, quantile(v.clone(), 0.9)? - quantile(v, 0.1)?))
+            // a gap reaches both ends of the line (into the rebate); an even stripe of the scene
+            // ends at the picture's edge, before them
+            let k = (v.len() * 3 / 100).max(2);
+            let level = median(v.clone())?;
+            let head = median(v.iter().take(k).copied().collect())?;
+            let tail = median(v.iter().rev().take(k).copied().collect())?;
+            let spread = (quantile(v.clone(), 0.9)? - quantile(v, 0.1)?).max((head - level).abs()).max((tail - level).abs());
+            Some((level, spread))
         })
         .collect();
     let even = |s: &f32| *s < GAP_SPREAD;
@@ -549,13 +566,14 @@ fn frame_gaps(lum: &Plane, img: &Rgb32f, film: Px, holes: &[Option<HoleRow>; 2],
     let gap = |o: &Option<(f32, f32)>| o.is_some_and(|(lv, sp)| even(&sp) && lv >= thinnest - GAP_LEVEL && lv >= typical + GAP_CONTRAST);
     // (a gap between frames is narrow; a wide even stretch is blank film or a featureless scene)
     let widest = ((l1.saturating_sub(l0)) as f64 * GAP_WIDTH_MAX) as usize;
+    let narrowest = ((l1.saturating_sub(l0) as f64 * GAP_WIDTH_MIN) as usize).max(2);
     let mut out = Vec::new();
     let mut start = None;
     for (i, o) in lines.iter().chain(std::iter::once(&None)).enumerate() {
         match (gap(o), start) {
             (true, None) => start = Some(i),
             (false, Some(s0)) => {
-                if (GAP_MIN..=widest).contains(&(i - s0)) {
+                if (narrowest..=widest).contains(&(i - s0)) {
                     out.push((l0 + s0, l0 + i));
                 }
                 start = None;
@@ -658,12 +676,14 @@ fn distance(img: &Rgb32f, base: &[f32; 3], threshold: f32, light: &Light) -> Pla
 
 // ---- the picture's sides
 
-/// A place the picture may start on one side: `depth` pixels in from the film's edge, and how
-/// little the scan backs it (0 = sure).
+/// A place the picture may start on one side: `depth` pixels in from the film's edge, how little
+/// the scan backs it (0 = sure), and whether it is a gap between frames (whose depth says where the
+/// holder cut the neighbour, not how wide the rebate is).
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Cand {
     depth: usize,
     cost: f64,
+    gap: bool,
 }
 
 /// The fewest sides the scan must show; the rest are placed from them.
@@ -764,9 +784,23 @@ impl Scan<'_> {
 
     /// The places the picture may start on `side`, in from the film's edge.
     fn candidates(&self, side: Side) -> Vec<Cand> {
-        let (start, across) = film_edge(self.film, side, self.size());
-        let lines = self.lines(side);
+        let (_, across) = film_edge(self.film, side, self.size());
         let reach = ((across as f64) * SEARCH) as usize;
+        let mut out = self.edge_cands(side, reach);
+        // a gap between frames on this side: what lies before its inner edge is the gap itself or a
+        // neighbour's piece, never the picture (a bright gap at the film's edge looks like picture
+        // reaching the edge). Two gaps can't both be within reach (a whole frame lies between
+        // gaps): the outer one is the gap, an inner one an even stripe of the scene.
+        if let Some(inner) = self.gap_cands(side, reach).iter().map(|c| c.depth).min() {
+            out.retain(|c| c.depth >= inner);
+        }
+        out
+    }
+
+    /// [`Self::candidates`] before the gaps rule out what lies outside them.
+    fn edge_cands(&self, side: Side, reach: usize) -> Vec<Cand> {
+        let (start, _) = film_edge(self.film, side, self.size());
+        let lines = self.lines(side);
         let profile = self.profile(side, start, &lines, reach);
         let skip = (reach / 40).max(2);
         let gaps = self.gap_cands(side, reach);
@@ -774,7 +808,7 @@ impl Scan<'_> {
         if rebate > REBATE_MAX {
             // the picture (or something that isn't rebate) reaches the film's edge, unless a gap
             // between frames ends a neighbour's piece here
-            let mut out = vec![Cand { depth: 0, cost: 0.0 }];
+            let mut out = vec![Cand { depth: 0, cost: 0.0, gap: false }];
             out.extend(gaps);
             return out;
         }
@@ -785,7 +819,7 @@ impl Scan<'_> {
             let from = i.saturating_sub(reach / 10).max(skip);
             let best = (from..=i).max_by(|a, b| share_at(&shares, *a).total_cmp(&share_at(&shares, *b)));
             let depth = best.filter(|b| share_at(&shares, *b) >= WEAK_SHARE).unwrap_or(i);
-            out.push(Cand { depth, cost: 0.0 });
+            out.push(Cand { depth, cost: 0.0, gap: false });
         }
         out.extend(gate_edges(&shares, skip));
         out.extend(gaps);
@@ -807,7 +841,7 @@ impl Scan<'_> {
             .filter_map(|(g0, g1)| {
                 let depth = if near { g1.checked_sub(lo)? } else { hi.checked_sub(*g0)? };
                 // a gap at the film's edge on this side, not past its middle
-                (depth <= reach && depth * 2 < hi.saturating_sub(lo)).then_some(Cand { depth, cost: GAP_COST })
+                (depth <= reach && depth * 2 < hi.saturating_sub(lo)).then_some(Cand { depth, cost: GAP_COST, gap: true })
             })
             .collect()
     }
@@ -837,12 +871,13 @@ fn gate_edges(shares: &[f32], skip: usize) -> Vec<Cand> {
     peaks.sort_by(|a, b| b.1.total_cmp(&a.1));
     peaks.truncate(MAX_CANDS);
     // a full edge costs little, one the side only half steps across nearly as much as none
-    peaks.into_iter().map(|(i, s)| Cand { depth: i, cost: 0.1 + f64::from(1.0 - s.min(1.0)) * 1.6 }).collect()
+    peaks.into_iter().map(|(i, s)| Cand { depth: i, cost: 0.1 + f64::from(1.0 - s.min(1.0)) * 1.6, gap: false }).collect()
 }
 
 /// The sides' depths (in from the film's edges) as a picture box; missing sides placed.
-fn complete(depths: [Option<f64>; 4], film: Px, ratio: Option<f64>) -> Option<Px> {
+fn complete(depths: [Option<f64>; 4], gaps: [bool; 4], film: Px, ratio: Option<f64>) -> Option<Px> {
     let [mut top, mut bottom, mut left, mut right] = depths;
+    let [gap_top, gap_bottom, gap_left, gap_right] = gaps;
     let (fw, fh) = (film.width() as f64, film.height() as f64);
     // one missing side of an axis: from the format's aspect (width over height) when the other
     // axis is whole, else as deep as the side across from it; both missing: as deep as the other
@@ -856,12 +891,13 @@ fn complete(depths: [Option<f64>; 4], film: Px, ratio: Option<f64>) -> Option<Px
                 fill(&mut top, &mut bottom, fh - (fw - l - r) / ratio);
             }
         }
-        // (a side whose picture reaches the film's edge says nothing about the rebate)
-        let rebate = |a: Option<f64>, b: Option<f64>| {
-            let v: Vec<f64> = [a, b].into_iter().flatten().filter(|v| *v > 0.0).collect();
+        // (a side whose picture reaches the film's edge, or that ends at a gap, says nothing about
+        // the rebate)
+        let rebate = |a: Option<f64>, ga: bool, b: Option<f64>, gb: bool| {
+            let v: Vec<f64> = [a.filter(|_| !ga), b.filter(|_| !gb)].into_iter().flatten().filter(|v| *v > 0.0).collect();
             (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
         };
-        let (across_y, across_x) = (rebate(left, right), rebate(top, bottom));
+        let (across_y, across_x) = (rebate(left, gap_left, right, gap_right), rebate(top, gap_top, bottom, gap_bottom));
         // with a format, a side across from one whose picture reaches the film's edge is left to the
         // format, once the other axis is whole
         mirror(&mut top, &mut bottom, across_y, ratio.is_some());
@@ -951,7 +987,7 @@ fn score(pick: &[Option<Cand>; 4], film: Px, ratio: Option<f64>, extent: &dyn Fn
     let fracs: Vec<f32> = pick.iter().enumerate().filter_map(|(i, p)| p.map(|c| (c.depth as f64 / extent(i)) as f32)).collect();
     let m = median(fracs.clone()).unwrap_or(0.0);
     let depth: f64 = fracs.iter().map(|f| (f64::from((f - m).abs()) - DEPTH_TOLERANCE).max(0.0)).sum::<f64>() * DEPTH_WEIGHT;
-    let r = complete(pick.map(|p| p.map(|c| c.depth as f64)), film, ratio)?;
+    let r = complete(pick.map(|p| p.map(|c| c.depth as f64)), pick.map(|p| p.is_some_and(|c| c.gap)), film, ratio)?;
     let aspect = ratio.map_or(0.0, |want| (r.width() as f64 / r.height().max(1) as f64 / want).ln().abs() * ASPECT_WEIGHT);
     Some((own + depth + aspect, r))
 }
@@ -1224,6 +1260,17 @@ mod tests {
         let s = film_scan((20.0, 620.0), |x, y| (140.0..760.0).contains(&x).then(|| scene(x, y) * 0.5));
         let f = detect(&s, None).unwrap();
         assert!((f.picture.x0 - 140.0 / 900.0).abs() < 0.012 && (f.picture.x1 - 760.0 / 900.0).abs() < 0.012, "{f:?}");
+    }
+
+    /// 6×6 whose picture (100..800) reaches the holder at the top and the bottom, with narrow gaps
+    /// at the film's ends: the film's edge bands are mostly picture, so the base guessed from them
+    /// is far from the gaps, which then read as picture reaching the film's edge. The gaps still
+    /// end the picture.
+    #[test]
+    fn narrow_gaps_at_the_film_ends_end_the_picture() {
+        let s = film_scan((20.0, 620.0), |x, y| (100.0..800.0).contains(&x).then(|| scene(x, y) * 0.7 / 0.45));
+        let f = detect(&s, None).unwrap();
+        assert!((f.picture.x0 - 100.0 / 900.0).abs() < 0.012 && (f.picture.x1 - 800.0 / 900.0).abs() < 0.012, "{f:?}");
     }
 
     /// A strip with a piece of the neighbours left (60..150) and right (800..840) of the frame
