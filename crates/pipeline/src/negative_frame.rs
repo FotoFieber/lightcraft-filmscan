@@ -19,8 +19,8 @@
 //!    side) is used instead.
 //! 5. **Choice.** Each side offers its colour step and its strongest straight edges; the choice of
 //!    one per side (or none) weighs how sure each is, how alike the rebates are (a holder masks the
-//!    film evenly) and, when a format is chosen, the picture's aspect. A side left out is placed by
-//!    the format, else as deep as the side across from it.
+//!    film evenly, though never exactly alike) and, when a format is chosen, the picture's aspect.
+//!    A side left out is placed by the format, else as deep as the side across from it.
 //! 6. **Base.** The median of the rebate (film outside the picture, light left out).
 //!
 //! Nothing here panics on any input: a scan with no film frame to find is an error.
@@ -452,6 +452,10 @@ const MIN_SIDES: u8 = 2;
 const MISSING_COST: f64 = 1.0;
 /// Weight of a side's rebate differing from the others' (per fraction of the film's extent).
 const DEPTH_WEIGHT: f64 = 10.0;
+/// How much the rebates may differ for free (fraction of the film's extent): a holder never masks
+/// the sides exactly alike, and a roll film's frame gap is narrower than its edge. A step deep in
+/// the scene (a quarter of the frame) still costs.
+const DEPTH_TOLERANCE: f64 = 0.04;
 /// Weight of a picture differing from the chosen format's aspect (per unit of log aspect).
 const ASPECT_WEIGHT: f64 = 20.0;
 /// Most candidates kept per side (besides the colour step).
@@ -610,8 +614,10 @@ fn complete(depths: [Option<f64>; 4], film: Px, ratio: Option<f64>) -> Option<Px
             (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
         };
         let (across_y, across_x) = (rebate(left, right), rebate(top, bottom));
-        mirror(&mut top, &mut bottom, across_y);
-        mirror(&mut left, &mut right, across_x);
+        // with a format, a side across from one whose picture reaches the film's edge is left to the
+        // format, once the other axis is whole
+        mirror(&mut top, &mut bottom, across_y, ratio.is_some());
+        mirror(&mut left, &mut right, across_x, ratio.is_some());
         if top.is_none()
             && bottom.is_none()
             && let Some(d) = across_y
@@ -649,12 +655,21 @@ fn fill(a: &mut Option<f64>, b: &mut Option<f64>, total: f64) {
 }
 
 /// One side missing: as deep as the side across from it, unless the picture reaches the film's
-/// edge there; then as deep as the other axis's rebate (`other`), else on the film's edge.
-fn mirror(a: &mut Option<f64>, b: &mut Option<f64>, other: Option<f64>) {
-    let like = |v: f64| if v > 0.0 { v } else { other.unwrap_or(0.0) };
+/// edge there; then as deep as the other axis's rebate (`other`), else on the film's edge. With
+/// `by_format`, such a side is left for the format to place.
+fn mirror(a: &mut Option<f64>, b: &mut Option<f64>, other: Option<f64>, by_format: bool) {
+    let like = |v: f64| {
+        if v > 0.0 {
+            Some(v)
+        } else if by_format {
+            None
+        } else {
+            Some(other.unwrap_or(0.0))
+        }
+    };
     match (*a, *b) {
-        (Some(x), None) => *b = Some(like(x)),
-        (None, Some(y)) => *a = Some(like(y)),
+        (Some(x), None) => *b = like(x),
+        (None, Some(y)) => *a = like(y),
         _ => {}
     }
 }
@@ -687,7 +702,7 @@ fn score(pick: &[Option<Cand>; 4], film: Px, ratio: Option<f64>, extent: &dyn Fn
     let own: f64 = pick.iter().map(|p| p.map_or(MISSING_COST, |c| c.cost)).sum();
     let fracs: Vec<f32> = pick.iter().enumerate().filter_map(|(i, p)| p.map(|c| (c.depth as f64 / extent(i)) as f32)).collect();
     let m = median(fracs.clone()).unwrap_or(0.0);
-    let depth: f64 = fracs.iter().map(|f| f64::from((f - m).abs())).sum::<f64>() * DEPTH_WEIGHT;
+    let depth: f64 = fracs.iter().map(|f| (f64::from((f - m).abs()) - DEPTH_TOLERANCE).max(0.0)).sum::<f64>() * DEPTH_WEIGHT;
     let r = complete(pick.map(|p| p.map(|c| c.depth as f64)), film, ratio)?;
     let aspect = ratio.map_or(0.0, |want| (r.width() as f64 / r.height().max(1) as f64 / want).ln().abs() * ASPECT_WEIGHT);
     Some((own + depth + aspect, r))
@@ -848,5 +863,61 @@ mod tests {
         let mut short = Rgb32f::filled(64, 48, [0.5; 3]);
         short.data.truncate(10);
         assert!(detect(&short, None).is_err());
+    }
+
+    /// A frame of 120 film (6×6) in a holder that masks the film's long edges, on a 900 × 640 scan:
+    /// the film shows on 150..770 × 20..600, the picture on 172..748 × 22..598, so the picture
+    /// reaches the holder at the top and the bottom and the rebate shows only between frames, left
+    /// and right. The sky (top) is dense, the rest about as thin as the base; a dense block from
+    /// x = 420 to 640 (mid-height) is a colour step deep inside the picture from the right. The
+    /// frame lines step across 47 % of the rows on the left and 60 % on the right (bright foliage
+    /// beside them hides the rest).
+    fn medium_format(x: f64, y: f64) -> [f32; 3] {
+        let film = [150.0, 20.0, 770.0, 600.0];
+        let pic = [172.0, 22.0, 748.0, 598.0];
+        if !inside(film, x, y) {
+            return [0.004, 0.003, 0.003];
+        }
+        if !inside(pic, x, y) {
+            return BASE;
+        }
+        let row = ((y as usize).wrapping_mul(37) % 100) as f64;
+        let steps = if x < 212.0 {
+            row < 47.0
+        } else if x >= 708.0 {
+            row < 60.0
+        } else {
+            true
+        };
+        let dense = y < 130.0 || inside([420.0, 200.0, 640.0, 420.0], x, y);
+        let t = if dense {
+            0.15
+        } else if steps {
+            0.85
+        } else {
+            1.0
+        };
+        BASE.map(|c| c * t as f32)
+    }
+
+    #[test]
+    fn a_medium_format_frame_whose_picture_meets_the_holder_is_found() {
+        let (w, h) = (900usize, 640usize);
+        let m = SRGB.to_space(&REC2020).to_f32();
+        let s = Rgb32f::from_fn(w, h, |x, y| {
+            let p = medium_format(x as f64 + 0.5, y as f64 + 0.5);
+            m.map(|r| r[0] * p[0] + r[1] * p[1] + r[2] * p[2])
+        });
+        let want = [172.0 / w as f64, 22.0 / h as f64, 748.0 / w as f64, 598.0 / h as f64];
+        let close = |a: Rect, tol: f64| [(a.x0, want[0]), (a.y0, want[1]), (a.x1, want[2]), (a.y1, want[3])].iter().all(|(x, y)| (x - y).abs() < tol);
+        // 6×6: the top and the bottom on the holder, the sides on the frame lines
+        let f = detect(&s, format_ratio("66").unwrap()).unwrap();
+        assert!(close(f.picture, 0.01), "6×6: {f:?}");
+        // (the top on the holder and one frame line; the rest placed from them)
+        assert!(f.sides_found >= 2, "{f:?}");
+        // auto: the frame lines, never the dense block inside the picture
+        let f = detect(&s, None).unwrap();
+        assert!((f.picture.x0 - want[0]).abs() < 0.01 && (f.picture.x1 - want[2]).abs() < 0.01, "auto: {f:?}");
+        assert!(f.picture.height() > 0.85, "auto: {f:?}");
     }
 }

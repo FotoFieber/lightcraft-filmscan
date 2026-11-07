@@ -240,7 +240,7 @@ fn zap_on_real_scans() {
         let format = std::env::var("LC_ZAP_FORMAT").unwrap_or_else(|_| "auto".into());
         let ratio = lightcraft_pipeline::negative_frame::format_ratio(&format).unwrap();
         let frame = lightcraft_pipeline::negative_frame::detect(&src, ratio);
-        let r = s.execute("develop.negativeZap", &json!({"format": format}));
+        let r = s.execute("develop.negativeZap", &json!({"ids": [id.0], "format": format}));
         println!("{name}: {frame:?}\n    -> {}", r.as_ref().map(|v| v["zap"].to_string()).unwrap_or_else(|e| e.to_string()));
         // the scan with the film and the picture drawn on it, in the turned frame's coordinates
         if let Ok(f) = frame {
@@ -267,6 +267,9 @@ fn zap_on_real_scans() {
                 }
             }
             write_ppm(&out.join(format!("{name}-frame.ppm")), &img);
+        } else {
+            // nothing found: the plain scan, to see why
+            write_ppm(&out.join(format!("{name}-frame.ppm")), &src.to_srgb8());
         }
         if r.is_ok() {
             let rendered = s.render_now(id, 900, 900).unwrap();
