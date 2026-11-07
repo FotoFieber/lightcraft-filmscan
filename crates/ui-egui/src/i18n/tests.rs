@@ -473,6 +473,28 @@ fn choice_values_read_as_words_in_every_language() {
     }
 }
 
+/// Convert Negative's labels take their own context where a shared translation reads wrongly (a
+/// faded look, not a slideshow's fade); every contextual entry names a label the panel shows, and
+/// a label without one reads as everywhere else.
+#[test]
+fn convert_negative_labels_take_their_context() {
+    assert_eq!(tr_ctx_in(Locale::De, NEGATIVE_CONTEXT, "Fade"), "Verblassen");
+    assert_eq!(tr_in(Locale::De, "Fade"), "Überblendung", "the slideshow's fade keeps its word");
+    assert_eq!(tr_ctx_in(Locale::De, NEGATIVE_CONTEXT, "Print"), "Abzug");
+    assert_eq!(tr_ctx_in(Locale::De, NEGATIVE_CONTEXT, "Exposure"), tr_in(Locale::De, "Exposure"), "no entry: the plain one");
+    assert_eq!(tr_ctx_in(Locale::En, NEGATIVE_CONTEXT, "Fade"), "Fade");
+    let plain = plain_messages();
+    for language in Locale::ALL {
+        for key in language.catalog().keys() {
+            if let Some((context, source)) = key.split_once('|')
+                && CONTEXTS.contains(&context)
+            {
+                assert!(plain.contains(source), "{}: {key:?} names no label", language.code());
+            }
+        }
+    }
+}
+
 /// A rule's problem reads as the field's name and the issue, in the editor's language, joined by
 /// a full-width colon in Japanese and Chinese; the sidebar's list puts the rule's position first.
 #[test]
@@ -1098,11 +1120,10 @@ fn plain_messages() -> std::collections::BTreeSet<String> {
         "Imported Photos",
     ]);
     labels.extend(crate::panels::keyword_list::VARIABLE_LABELS);
-    let contextual = format!("{BOOL_CONTEXT}|");
     Locale::ALL
         .iter()
         .flat_map(|language| language.catalog().keys())
-        .filter(|key| !key.starts_with(&contextual))
+        .filter(|key| !CONTEXTS.iter().any(|context| key.starts_with(&format!("{context}|"))))
         .cloned()
         .chain(gaps::source_messages())
         .chain(labels.into_iter().map(str::to_string))

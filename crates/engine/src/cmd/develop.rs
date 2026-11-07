@@ -86,10 +86,7 @@ fn recipe_partial(recipe: &[(String, f64)]) -> Option<Value> {
 const MAX_PRESET_TEXT: usize = 100;
 
 pub(super) fn crop_dims(s: &Session, id: PhotoId) -> (f64, f64) {
-    let p = s.catalog.photo(id);
-    let (w, h) = p.map(|p| (p.width.max(1) as f64, p.height.max(1) as f64)).unwrap_or((3.0, 2.0));
-    let o = p.map(|p| p.develop.orientation).unwrap_or_default();
-    if o.swaps_axes() { (h, w) } else { (w, h) }
+    s.catalog.photo(id).map(|p| crate::negative_zap::oriented_dims(p)).unwrap_or((3.0, 2.0))
 }
 
 /// After a generic control write (`develop.set`, `develop.adjust`, …) that touched `crop.angle`:

@@ -2,14 +2,14 @@
 //! film preset and the advanced choices, and pick the film base or a gray point from the scan. The
 //! sliders are develop controls (`negative.*`, set with `develop.set`).
 
+use lightcraft_catalog::{Op, PhotoId};
 use lightcraft_develop::{DevelopSettings, Negative};
-use lightcraft_geom::{CropGeometry, MIN_CROP_FRACTION, Rect};
+use lightcraft_geom::Rect;
 use lightcraft_pipeline::negative::film::{Look, Preset, Tone, WbPreset};
-use lightcraft_pipeline::negative_frame::{self, Margin};
 use serde_json::{Value, json};
 
-use super::{CommandSpec, bad, cmd, f64_req, has_active, str_param};
-use crate::{Result, Session, media::SourceLevel};
+use super::{CommandSpec, bad, cmd, f64_req, has_active, has_selection, str_param};
+use crate::{Result, Session, media::SourceLevel, negative_zap};
 
 /// Fraction of each edge the measurement leaves out by default (film holder, sprocket holes,
 /// the border itself).
@@ -44,66 +44,61 @@ fn measure(s: &mut Session, id: crate::PhotoId, border: f64, c: &str) -> Result<
 
 /// Measures the oriented scan `o` inside `r` (normalized), `border` in from each edge.
 fn measure_in(o: &lightcraft_raster::Rgb32f, r: Rect, border: f64, c: &str) -> Result<lightcraft_develop::NegativeMeasurement> {
-    let (w, h) = (o.width as f64, o.height as f64);
-    let at = |v: f64, n: f64| if v.is_finite() { (v.clamp(0.0, 1.0) * n).round() as usize } else { 0 };
-    let (x0, y0, x1, y1) = (at(r.x0, w), at(r.y0, h), at(r.x1, w), at(r.y1, h));
-    let framed = if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o.clone() };
-    lightcraft_pipeline::negative::measure(&framed, border).map_err(|e| bad(c, e))
+    negative_zap::measure_in(o, r, border).map_err(|e| bad(c, e))
 }
 
-/// `develop.negativeZap`: finds the picture on the active scan, then straightens and crops to it,
-/// takes the film base from the rebate and measures the picture, as one edit.
+/// Zap! on photo `id`, its scan read now.
+fn zap_photo(s: &mut Session, id: PhotoId, o: negative_zap::Options) -> std::result::Result<negative_zap::Zapped, String> {
+    let src = s.source_now(id, SourceLevel::Preview)?;
+    let d = s.develop_of(id).unwrap_or_default();
+    let dims = s.catalog.photo(id).map(|p| negative_zap::oriented_dims(p)).unwrap_or((3.0, 2.0));
+    negative_zap::zap(&src, &d, dims, o)
+}
+
+/// `develop.negativeZap`: on each target photo, finds the picture on the scan, then straightens
+/// and crops to it, takes the film base from the rebate and measures the picture; all of it one
+/// undo step. Each photo gets its own frame (Auto Sync doesn't copy one photo's crop to the rest);
+/// a photo with no frame to find is left out and reported, and only when none is found is the
+/// call an error.
 fn zap(s: &mut Session, p: &Value) -> Result<Value> {
     let c = "develop.negativeZap";
-    let margin = match p.get("margin") {
-        None | Some(Value::Null) => Margin::Inside,
-        Some(Value::String(m)) => Margin::parse(m).ok_or_else(|| bad(c, format!("unknown margin `{m}` (inside, edge or border)")))?,
-        Some(v) => return Err(bad(c, format!("`margin` must be inside, edge or border, not {v}"))),
-    };
-    let ratio = match p.get("format") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(f)) => negative_frame::format_ratio(f).map_err(|e| bad(c, e))?,
-        Some(v) => return Err(bad(c, format!("`format` must be a film format id, not {v}"))),
-    };
-    let id = s.active().ok_or_else(|| bad(c, "no active photo"))?;
-    let src = s.source_now(id, SourceLevel::Preview).map_err(|e| bad(c, e))?;
-    let d = s.develop_of(id).unwrap_or_default();
-    let o = src.oriented(d.orientation);
-    let frame = negative_frame::detect(&o, ratio).map_err(|e| bad(c, e))?;
-    let (w, h) = super::develop::crop_dims(s, id);
-    let rect = frame.crop(margin, o.width as f64, o.height as f64);
-    let geometry = CropGeometry { rect, angle: frame.angle }.constrained(w, h);
-    let min = MIN_CROP_FRACTION * w.min(h);
-    if geometry.rect.width() * w < min || geometry.rect.height() * h < min {
-        return Err(bad(c, "no film frame found"));
+    let o = negative_zap::Options::from_params(p).map_err(|e| bad(c, e))?;
+    let ids = s.targets(p)?;
+    // a wrong id is a bad request, unlike a scan with no frame on it
+    if let Some(id) = ids.iter().find(|id| s.catalog.photo(**id).is_none()) {
+        return Err(bad(c, format!("no such photo: {}", id.0)));
     }
-    // measured on the picture itself: nothing of the rebate left to leave out
-    let measured = measure_in(&o, geometry.rect, 0.0, c)?;
-    let mut out = Value::Null;
-    super::develop::edit(s, c, "Zap", |d: &mut DevelopSettings| {
-        d.crop.geometry = geometry;
-        let n = &mut d.negative;
-        n.enabled = true;
-        n.measured = Some(measured);
-        if let Some(b) = frame.base {
-            // the picked base only counts in Advanced
-            n.advanced = true;
-            n.base = Some(b);
+    let many = ids.len() > 1;
+    let mut ops = Vec::new();
+    let mut failed: Vec<(PhotoId, String)> = Vec::new();
+    let mut first: Option<(PhotoId, Value)> = None;
+    for id in ids {
+        match zap_photo(s, id, o) {
+            Ok(z) => {
+                if let Some(op) = s.develop_op(id, z.settings, negative_zap::LABEL) {
+                    first.get_or_insert((id, z.report));
+                    ops.push(op);
+                }
+            }
+            Err(e) => failed.push((id, e)),
         }
-        out = state(n);
-        Ok(())
-    })?;
-    if let Some(o) = out.as_object_mut() {
-        o.insert(
-            "zap".into(),
-            json!({
-                "angle": geometry.angle,
-                "rect": [geometry.rect.x0, geometry.rect.y0, geometry.rect.x1, geometry.rect.y1],
-                "base": frame.base,
-                "sprockets": frame.sprockets,
-                "sidesFound": frame.sides_found,
-            }),
-        );
+    }
+    let Some((id, report)) = first else {
+        let why = match failed.first() {
+            Some((id, e)) if many => format!("no film frame found on any of the photos (photo {}: {e})", id.0),
+            Some((_, e)) => e.clone(),
+            None => "no photo to zap".into(),
+        };
+        return Err(bad(c, why));
+    };
+    let changed = ops.len();
+    s.commit(negative_zap::LABEL, Op::Batch { ops })?;
+    // the first zapped photo's conversion, as for one photo, and the run's summary
+    let mut out = s.develop_of(id).map(|d| state(&d.negative)).unwrap_or(Value::Null);
+    if let (Some(o), Value::Object(sum)) = (out.as_object_mut(), negative_zap::summary(changed, &failed)) {
+        o.insert("zap".into(), report);
+        o.insert("id".into(), json!(id.0));
+        o.extend(sum);
     }
     Ok(out)
 }
@@ -231,14 +226,17 @@ pub fn specs() -> Vec<CommandSpec> {
                 Ok(out)
             }
         ),
-        cmd!(
-            "develop.negativeZap",
-            "Zap!",
-            [],
-            None,
-            "{margin?: inside|edge|border (default inside), format?: auto|35mm|half|xpan|645|66|67|68|69|612|617 (default auto: no aspect assumed)} — finds the picture on the scan of a negative (the holder, the film's rebate and its sprocket holes left out), straightens and crops to it, takes the film base from the rebate and measures the picture; one undo step",
-            has_active,
-            zap
-        ),
+        CommandSpec {
+            explicit_targets: true,
+            ..cmd!(
+                "develop.negativeZap",
+                "Zap!",
+                ["Photo"],
+                None,
+                "{ids?, margin?: inside|edge|border (default inside), format?: auto|35mm|half|xpan|645|66|67|68|69|612|617 (default auto: no aspect assumed)} — on each target photo (`ids`, else the selection), finds the picture on the scan of a negative (the holder, the film's rebate and its sprocket holes left out), straightens and crops to it, takes the film base from the rebate and measures the picture; one undo step for all. A photo with no frame is left out → the first zapped photo's conversion with `zap` (what was found), `id`, `changed` and `failed` [{id, error}]; an error only when no photo was zapped",
+                has_selection,
+                zap
+            )
+        },
     ]
 }

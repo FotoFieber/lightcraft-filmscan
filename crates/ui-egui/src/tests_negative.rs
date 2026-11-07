@@ -120,3 +120,42 @@ fn zap_crops_to_the_frame_with_the_panels_choices_and_undoes_in_one_step() {
     assert_eq!(h.app.session.develop_of(id).unwrap().crop, before.crop);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn zap_on_a_selection_runs_in_the_background_and_commits_once() {
+    let dir = std::env::temp_dir().join(format!("lc-ui-zap-many-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let paths: Vec<_> = (0..3).map(|i| dir.join(format!("negative-{i}.png"))).collect();
+    for (i, p) in paths.iter().enumerate() {
+        negative_png(p);
+        // three files, not one imported three times: bytes after the PNG's end tell them apart
+        let mut bytes = std::fs::read(p).unwrap();
+        bytes.extend(std::iter::repeat_n(0u8, i));
+        std::fs::write(p, bytes).unwrap();
+    }
+    let mut session = lightcraft_engine::Session::new().with_fs();
+    session.execute("library.import", &json!({"paths": paths.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>()})).unwrap();
+    let mut app = LightcraftApp::new(session, Services { png: None, ..Default::default() });
+    let ids: Vec<_> = app.session.visible_cloned().to_vec();
+    assert_eq!(ids.len(), 3);
+    app.session.execute("library.select", &json!({"ids": ids.iter().map(|i| i.0).collect::<Vec<_>>(), "active": ids[0].0})).unwrap();
+    app.ui.negative_zap_margin = "edge".into();
+    let before = app.session.commits();
+    // Photo ▸ Zap! (the panel's button runs the same command)
+    let reply = app.run("develop.negativeZap", json!({})).unwrap();
+    assert_eq!((reply["pending"].as_bool(), reply["photos"].as_u64()), (Some(true), Some(3)), "{reply}");
+    assert_eq!(app.session.commits(), before, "nothing changes until the run is done");
+    assert!(app.session.activity.list().iter().any(|t| t.kind == "zap"), "listed in the activity stack");
+    assert!(crate::tasks::wait_for(&mut app, &egui::Context::default(), "Zap!", SETTLE));
+    assert_eq!(app.session.commits(), before + 1, "one undo step; toast {:?}", app.ui.toast);
+    let want = [120.0 / 900.0, 80.0 / 600.0, 780.0 / 900.0, 520.0 / 600.0];
+    for id in &ids {
+        let d = app.session.develop_of(*id).unwrap();
+        let g = d.crop.geometry.rect;
+        assert!(want.iter().zip([g.x0, g.y0, g.x1, g.y1]).all(|(a, b)| (a - b).abs() < 0.015), "{id:?}: {g:?} with the panel's margin");
+        assert!(d.negative.enabled && d.negative.base.is_some());
+    }
+    app.session.execute("edit.undo", &json!({})).unwrap();
+    assert!(ids.iter().all(|id| !app.session.develop_of(*id).unwrap().negative.enabled), "undone together");
+    std::fs::remove_dir_all(&dir).ok();
+}

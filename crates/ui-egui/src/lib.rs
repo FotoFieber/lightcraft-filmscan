@@ -93,6 +93,7 @@ mod app;
 mod auto_settings;
 mod caches;
 mod clock;
+mod negative_zap;
 mod services;
 
 #[cfg(test)]

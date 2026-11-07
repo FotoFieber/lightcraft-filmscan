@@ -60,6 +60,7 @@ pub mod media;
 pub mod memory;
 pub mod merge;
 mod model_download;
+pub mod negative_zap;
 pub mod open_path;
 pub mod originals;
 mod pdf;

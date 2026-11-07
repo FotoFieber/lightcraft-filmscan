@@ -520,6 +520,19 @@ pub fn bool_text(b: bool) -> &'static str {
 /// The context of a smart-album yes/no value ([`tr_ctx_in`]).
 const BOOL_CONTEXT: &str = "smart album value";
 
+/// The context of the Convert Negative panel's labels, its sliders and choices: "Fade" there is a
+/// faded look, not a slideshow's transition, and "Print" a print film's colour, not printing.
+pub const NEGATIVE_CONTEXT: &str = "convert negative";
+
+/// Every context a catalog's `"<context>|<source>"` key may name (the tests check each entry).
+#[cfg(test)]
+const CONTEXTS: [&str; 2] = [BOOL_CONTEXT, NEGATIVE_CONTEXT];
+
+/// [`tr`] for a label whose translation depends on where it appears ([`tr_ctx_in`]).
+pub fn tr_ctx<'a>(context: &str, source: &'a str) -> &'a str {
+    tr_ctx_in(language(), context, source)
+}
+
 fn bool_text_in(language: Locale, b: bool) -> &'static str {
     tr_ctx_in(language, BOOL_CONTEXT, lightcraft_catalog::rules::bool_label(b))
 }

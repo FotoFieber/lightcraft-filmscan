@@ -432,7 +432,13 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
     let resp = ui.interact(track_rect.expand2(vec2(8.0, 2.0)), id, if enabled { Sense::click_and_drag() } else { Sense::hover() });
     let (wheel_armed, pointer_in_row) = update_wheel_arming(ui, id, &resp, row, enabled);
     // screen readers: a slider named after its control, with its value
-    let label_text = crate::i18n::tr(label_override.unwrap_or(spec.label)).to_string();
+    let label = label_override.unwrap_or(spec.label);
+    let label_text = if spec.section == lightcraft_develop::Section::Negative {
+        crate::i18n::tr_ctx(crate::i18n::NEGATIVE_CONTEXT, label)
+    } else {
+        crate::i18n::tr(label)
+    }
+    .to_string();
     resp.widget_info(|| egui::WidgetInfo::slider(enabled, value, label_text.clone()));
     describe_slider(ui, &g, &resp);
     // the name: double-click it to reset, as the thumb (a disabled slider's name is only text)
@@ -485,7 +491,7 @@ pub fn slider(ui: &mut Ui, spec: &ControlSpec, value: f64, enabled: bool, label_
     let hovered = resp.hovered() || resp.dragged();
     let text_c = if enabled { t.text_label } else { t.text_disabled };
     let p = ui.painter();
-    p.text(label_rect.left_center(), Align2::LEFT_CENTER, crate::i18n::tr(label_override.unwrap_or(spec.label)), t.font(12.5), text_c);
+    p.text(label_rect.left_center(), Align2::LEFT_CENTER, &label_text, t.font(12.5), text_c);
     if typing.is_none() {
         p.text(label_rect.right_center(), Align2::RIGHT_CENTER, shown_value(spec, v), t.font(12.5), text_c);
         // the scrub pointer, as over Lightroom's values: a drag here changes the value

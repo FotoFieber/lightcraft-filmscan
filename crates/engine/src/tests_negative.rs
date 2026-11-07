@@ -159,6 +159,54 @@ fn zap_rejects_bad_arguments_and_photos_without_a_frame() {
     assert!(after == before || after.negative.enabled, "either untouched or a frame was found");
 }
 
+#[test]
+fn zap_on_a_selection_gives_each_scan_its_own_frame_in_one_undo_step() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-many-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let blank = dir.join("blank.png");
+    let gray = lightcraft_raster::Rgb32f::from_fn(300, 200, |_, _| [0.3, 0.3, 0.3]);
+    std::fs::write(
+        &blank,
+        lightcraft_codecs::encode::encode_png(&lightcraft_codecs::encode::EncodeImage::rgba8(&gray.to_srgb8()), &Default::default()).unwrap(),
+    )
+    .unwrap();
+    let paths = [negative_scan(&dir, 1.5), negative_scan(&dir, -2.0), blank];
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": paths.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>()})).unwrap();
+    let ids: Vec<u64> = s.visible_cloned().iter().map(|p| p.0).collect();
+    assert_eq!(ids.len(), 3);
+    s.execute("library.select", &json!({"ids": ids, "active": ids[0]})).unwrap();
+    // Auto Sync on: still each photo's own frame, never the active photo's crop on the others
+    s.execute("develop.autoSync", &json!({"on": true})).unwrap();
+    let develop = |s: &Session| ids.iter().map(|id| s.develop_of(crate::PhotoId(*id)).unwrap()).collect::<Vec<_>>();
+    let before = develop(&s);
+    let r = s.execute("develop.negativeZap", &json!({"margin": "edge"})).unwrap();
+    assert_eq!(r["changed"], 2, "{r}");
+    let failed = r["failed"].as_array().unwrap();
+    assert_eq!(failed.len(), 1, "{r}");
+    let after = develop(&s);
+    let blank_at = after.iter().position(|d| !d.negative.enabled).expect("the scan with no frame is left out");
+    assert_eq!(failed[0]["id"], ids[blank_at], "{r}");
+    assert_eq!(after[blank_at], before[blank_at], "untouched");
+    let mut angles: Vec<f64> = after.iter().filter(|d| d.negative.enabled).map(|d| d.crop.geometry.angle).collect();
+    angles.sort_by(f64::total_cmp);
+    assert!((angles[0] + 2.0).abs() < 0.25 && (angles[1] - 1.5).abs() < 0.25, "{angles:?} {r}");
+    assert!(after.iter().filter(|d| d.negative.enabled).all(|d| d.negative.base.is_some() && d.negative.measured.is_some()));
+    // one step back undoes every photo
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert_eq!(develop(&s), before);
+    // named photos, whatever the selection; none with a frame is an error that changes nothing
+    s.execute("library.select", &json!({"ids": [ids[blank_at]], "active": ids[blank_at]})).unwrap();
+    assert!(s.execute("develop.negativeZap", &json!({"ids": [ids[blank_at]]})).is_err());
+    assert!(s.execute("develop.negativeZap", &json!({"ids": [999_999]})).is_err(), "no such photo");
+    assert!(s.execute("develop.negativeZap", &json!({"ids": "all"})).is_err());
+    assert_eq!(develop(&s), before);
+    let other = (blank_at + 1) % 3;
+    let r = s.execute("develop.negativeZap", &json!({"ids": [ids[other]]})).unwrap();
+    assert_eq!((r["changed"].as_u64(), r["id"].as_u64()), (Some(1), Some(ids[other])), "{r}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// Writes `img` as a binary PPM (test output only).
 fn write_ppm(path: &std::path::Path, img: &lightcraft_raster::Rgba8) {
     let mut out = format!("P6\n{} {}\n255\n", img.width, img.height).into_bytes();

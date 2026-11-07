@@ -47,6 +47,11 @@ const LOOKS: [(&str, &str); 5] = [("neutral", "Neutral"), ("lab_warm", "Lab Warm
 const MARGINS: [(&str, &str); 3] = [("inside", "Inside the Frame"), ("edge", "To the Edge"), ("border", "With Border")];
 const WBS: [(&str, &str); 4] = [("as_is", "As Shot"), ("warm", "Warm"), ("cool", "Cool"), ("tungsten_film", "Tungsten Film")];
 
+/// A label of this panel, in its context ([`crate::i18n::NEGATIVE_CONTEXT`]).
+fn tr(source: &str) -> &str {
+    crate::i18n::tr_ctx(crate::i18n::NEGATIVE_CONTEXT, source)
+}
+
 fn padded(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::NONE.inner_margin(egui::Margin { left: 24, right: 22, top: 6, bottom: 6 }).show(ui, add);
 }
@@ -63,19 +68,19 @@ fn set(app: &mut LightcraftApp, ui: &egui::Ui, p: Value) {
 fn choice(app: &mut LightcraftApp, ui: &mut egui::Ui, key: &str, label: &str, current: &str, options: &[(&str, &str)], from_preset: Option<&str>) {
     let t = Tokens::get(ui.ctx());
     let shown = match (current, from_preset) {
-        ("", Some(p)) => format!("{} ({})", crate::i18n::tr("From Preset"), crate::i18n::tr(p)),
-        (v, _) => crate::i18n::tr(options.iter().find(|(k, _)| *k == v).map_or("From Preset", |(_, l)| *l)).to_string(),
+        ("", Some(p)) => format!("{} ({})", tr("From Preset"), tr(p)),
+        (v, _) => tr(options.iter().find(|(k, _)| *k == v).map_or("From Preset", |(_, l)| *l)).to_string(),
     };
     padded(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::tr(label)).font(t.font(13.0)).color(t.text_dim));
+            ui.label(egui::RichText::new(tr(label)).font(t.font(13.0)).color(t.text_dim));
             let r = crate::widgets::dropdown(ui, &format!("negative-{key}"), &shown, t.font(14.0), t.text_label);
             egui::Popup::menu(&r).show(|ui| {
-                if from_preset.is_some() && ui.selectable_label(current.is_empty(), crate::i18n::tr("From Preset")).clicked() {
+                if from_preset.is_some() && ui.selectable_label(current.is_empty(), tr("From Preset")).clicked() {
                     set(app, ui, json!({ key: "" }));
                 }
                 for (value, name) in options {
-                    if ui.selectable_label(current == *value, crate::i18n::tr(name)).clicked() {
+                    if ui.selectable_label(current == *value, tr(name)).clicked() {
                         set(app, ui, json!({ key: value }));
                     }
                 }
@@ -90,7 +95,7 @@ fn picker_row(app: &mut LightcraftApp, ui: &mut egui::Ui, tool: &str, label: &st
     let t = Tokens::get(ui.ctx());
     padded(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::tr(label)).font(t.font(13.0)).color(t.text_dim));
+            ui.label(egui::RichText::new(tr(label)).font(t.font(13.0)).color(t.text_dim));
             let (r, resp) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
             match picked {
                 Some(c) => {
@@ -103,7 +108,7 @@ fn picker_row(app: &mut LightcraftApp, ui: &mut egui::Ui, tool: &str, label: &st
                 }
                 None => {
                     ui.painter().rect_stroke(r, 4.0, egui::Stroke::new(1.0, t.text_dim), egui::StrokeKind::Inside);
-                    ui.label(egui::RichText::new(crate::i18n::tr(fallback)).font(t.font(12.0)).color(t.text_dim));
+                    ui.label(egui::RichText::new(tr(fallback)).font(t.font(12.0)).color(t.text_dim));
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -129,10 +134,10 @@ fn picker_row(app: &mut LightcraftApp, ui: &mut egui::Ui, tool: &str, label: &st
 fn zap_choice(ui: &mut egui::Ui, key: &str, tip: &str, current: &mut String, options: &[(&str, &str)]) {
     let t = Tokens::get(ui.ctx());
     let shown = options.iter().find(|(v, _)| *v == current.as_str()).or(options.first()).map_or("", |(_, l)| *l);
-    let r = crate::widgets::dropdown(ui, key, crate::i18n::tr(shown), t.font(13.0), t.text_label).on_hover_text(crate::i18n::tr(tip));
+    let r = crate::widgets::dropdown(ui, key, tr(shown), t.font(13.0), t.text_label).on_hover_text(tr(tip));
     egui::Popup::menu(&r).show(|ui| {
         for (value, name) in options {
-            if ui.selectable_label(current == value, crate::i18n::tr(name)).clicked() {
+            if ui.selectable_label(current == value, tr(name)).clicked() {
                 *current = (*value).to_string();
             }
         }
@@ -145,7 +150,7 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     padded(ui, |ui| {
         ui.horizontal(|ui| {
             let tip = "Find the frame on the scan, straighten and crop to it and pick the film base";
-            if text_button(ui, "negative-zap", "Zap!", false).on_hover_text(crate::i18n::tr(tip)).clicked() {
+            if text_button(ui, "negative-zap", "Zap!", false).on_hover_text(tr(tip)).clicked() {
                 let p = json!({"margin": app.ui.negative_zap_margin, "format": app.ui.negative_zap_format});
                 if let Err(e) = app.run("develop.negativeZap", p) {
                     app.toast(ui.ctx(), e);
@@ -165,7 +170,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     header(ui, "Convert Negative");
     padded(ui, |ui| {
         let mut on = n.enabled;
-        let r = ui.checkbox(&mut on, crate::i18n::tr("Film negative"));
+        let r = ui.checkbox(&mut on, tr("Film negative"));
         register(ui, "check:negativeOn", r.rect);
         if r.changed() {
             set(app, ui, json!({"on": on}));
@@ -183,14 +188,14 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     zap_row(app, ui);
     if !n.enabled {
         padded(ui, |ui| {
-            ui.label(egui::RichText::new(crate::i18n::tr("Switch on to render this scan of a film negative as a positive.")).color(t.text_dim));
+            ui.label(egui::RichText::new(tr("Switch on to render this scan of a film negative as a positive.")).color(t.text_dim));
         });
         return;
     }
     let preset = lightcraft_pipeline::negative::preset_of(&n);
     padded(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::tr("Film")).font(t.font(13.0)).color(t.text_dim));
+            ui.label(egui::RichText::new(tr("Film")).font(t.font(13.0)).color(t.text_dim));
             let r = crate::widgets::dropdown(ui, "negative-preset", preset.name, t.font(14.0), t.text_label);
             egui::Popup::menu(&r).show(|ui| {
                 for p in &PRESETS {
@@ -230,7 +235,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
         });
         ui.add_space(6.0);
         ui.label(
-            egui::RichText::new(crate::i18n::tr(
+            egui::RichText::new(tr(
                 "Zap! finds the frame, straightens and crops to it and picks the film base. Otherwise the film base and levels are measured inside the crop, 8 % in from each edge: crop to the frame and measure again if the holder or the border shows.",
             ))
             .font(t.font(12.0))
