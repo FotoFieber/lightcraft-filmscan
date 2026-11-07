@@ -72,8 +72,9 @@ fn negative_png(path: &std::path::Path) {
         if !(60.0..840.0).contains(&x) || !(40.0..560.0).contains(&y) {
             return [0.004, 0.003, 0.003];
         }
-        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 196.0 + (y - cy).powi(2) / 64.0 < 1.0;
-        if hole(38.0) || hole(548.0) {
+        // (35 mm holes: deeper across the film than long along it)
+        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (y - cy).powi(2) / 196.0 < 1.0;
+        if hole(38.0) || hole(542.0) {
             return [0.92, 0.93, 0.97];
         }
         if !(120.0..780.0).contains(&x) || !(80.0..520.0).contains(&y) {
@@ -84,6 +85,13 @@ fn negative_png(path: &std::path::Path) {
     });
     let png = lightcraft_codecs::encode::encode_png(&lightcraft_codecs::encode::EncodeImage::rgba8(&img.to_srgb8()), &Default::default()).unwrap();
     std::fs::write(path, png).unwrap();
+}
+
+/// Zap!'s crop of the test scan (`want` its picture): the ends on the picture, the long sides by the
+/// sprocket holes (just below the cut ones at the top, 24..52 with the holder from 40; the whole
+/// ones at the bottom, 528..556, kept).
+fn on_frame(g: lightcraft_geom::Rect, want: [f64; 4]) -> bool {
+    (g.x0 - want[0]).abs() < 0.015 && (g.x1 - want[2]).abs() < 0.015 && g.y0 > 52.0 / 600.0 && g.y0 < want[1] && g.y1 > 556.0 / 600.0 - 0.01
 }
 
 #[test]
@@ -112,7 +120,7 @@ fn zap_crops_to_the_frame_with_the_panels_choices_and_undoes_in_one_step() {
     let d = h.app.session.develop_of(id).unwrap();
     let g = d.crop.geometry.rect;
     let want = [120.0 / 900.0, 80.0 / 600.0, 780.0 / 900.0, 520.0 / 600.0];
-    assert!(want.iter().zip([g.x0, g.y0, g.x1, g.y1]).all(|(a, b)| (a - b).abs() < 0.015), "{g:?} toast {:?}", h.app.ui.toast);
+    assert!(on_frame(g, want), "{g:?} toast {:?}", h.app.ui.toast);
     assert!(d.negative.advanced && d.negative.base.is_some(), "the base shows in the Film Base row");
     // Edit ▸ Undo takes the whole Zap! back
     h.request("engine.execute", json!({"command": "edit.undo"}), T);
@@ -152,7 +160,7 @@ fn zap_on_a_selection_runs_in_the_background_and_commits_once() {
     for id in &ids {
         let d = app.session.develop_of(*id).unwrap();
         let g = d.crop.geometry.rect;
-        assert!(want.iter().zip([g.x0, g.y0, g.x1, g.y1]).all(|(a, b)| (a - b).abs() < 0.015), "{id:?}: {g:?} with the panel's margin");
+        assert!(on_frame(g, want), "{id:?}: {g:?} with the panel's margin");
         assert!(d.negative.enabled && d.negative.base.is_some());
     }
     app.session.execute("edit.undo", &json!({})).unwrap();

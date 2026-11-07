@@ -149,7 +149,7 @@ fn zap_choice(ui: &mut egui::Ui, key: &str, tip: &str, current: &mut String, opt
 fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     padded(ui, |ui| {
         ui.horizontal(|ui| {
-            let tip = "Find the frame on the scan, straighten and crop to it and pick the film base";
+            let tip = "Find the frame on the scan, straighten and crop to it (35 mm: by the sprocket holes) and pick the film base. A crop of your own stays";
             if text_button(ui, "negative-zap", "Zap!", false).on_hover_text(tr(tip)).clicked() {
                 let p = json!({"margin": app.ui.negative_zap_margin, "format": app.ui.negative_zap_format});
                 if let Err(e) = app.run("develop.negativeZap", p) {

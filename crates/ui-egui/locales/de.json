@@ -3524,7 +3524,6 @@
   "Zap! finds the frame, straightens and crops to it and picks the film base. Otherwise the film base and levels are measured inside the crop, 8 % in from each edge: crop to the frame and measure again if the holder or the border shows.": "Zap! findet das Bild, richtet es gerade aus, schneidet es zu und wählt die Filmbasis. Sonst werden Filmbasis und Tonwerte innerhalb des Zuschnitts gemessen, 8 % von jedem Rand entfernt: Schneide auf das Bild zu und miss erneut, wenn der Filmhalter oder der Rand zu sehen ist.",
   "Pick the film base from the unexposed border": "Filmbasis am unbelichteten Rand aufnehmen",
   "Pick something that should be gray": "Etwas aufnehmen, das grau sein soll",
-  "Find the frame on the scan, straighten and crop to it and pick the film base": "Bild auf dem Scan finden, gerade ausrichten, zuschneiden und die Filmbasis wählen",
   "Where the crop sits on the frame's edge": "Wo der Zuschnitt am Bildrand liegt",
   "The film format, for an edge the scan doesn't show": "Das Filmformat, für einen Rand, den der Scan nicht zeigt",
   "Inside the Frame": "Innerhalb des Bildes",
@@ -3557,5 +3556,6 @@
   "Zap! was not applied because the library changed; try again": "Zap! wurde nicht angewendet, weil sich die Bibliothek geändert hat; versuche es erneut",
   "Zap! cancelled": "Zap! abgebrochen",
   "convert negative|Fade": "Verblassen",
-  "convert negative|Print": "Abzug"
+  "convert negative|Print": "Abzug",
+  "Find the frame on the scan, straighten and crop to it (35 mm: by the sprocket holes) and pick the film base. A crop of your own stays": "Bild auf dem Scan finden, gerade ausrichten, zuschneiden (Kleinbild: an der Perforation) und die Filmbasis wählen. Ein eigener Zuschnitt bleibt erhalten"
 }

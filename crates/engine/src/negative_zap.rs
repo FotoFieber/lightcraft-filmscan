@@ -6,7 +6,7 @@
 use lightcraft_catalog::{Photo, PhotoId};
 use lightcraft_develop::{DevelopSettings, NegativeMeasurement};
 use lightcraft_geom::{CropGeometry, MIN_CROP_FRACTION, Rect};
-use lightcraft_pipeline::negative_frame::{self, Margin};
+use lightcraft_pipeline::negative_frame::{self, Frame, Margin};
 use lightcraft_raster::Rgb32f;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -56,38 +56,81 @@ pub fn oriented_dims(p: &Photo) -> (f64, f64) {
     if p.develop.orientation.swaps_axes() { (h, w) } else { (w, h) }
 }
 
+/// The border a measurement inside the user's own crop leaves out when Zap! finds no frame to
+/// measure on (as Convert Negative's own measurement: holder, holes, rebate).
+const OWN_CROP_BORDER: f64 = 0.08;
+
+/// The photo's crop is the user's own: set, and not the one Zap! set last (which a later Zap! may
+/// set again). An unchanged full-frame crop is nobody's.
+pub fn own_crop(d: &DevelopSettings) -> bool {
+    let g = d.crop.geometry;
+    let same = |a: &CropGeometry, b: &CropGeometry| {
+        let (p, q) = (a.rect, b.rect);
+        [(p.x0, q.x0), (p.y0, q.y0), (p.x1, q.x1), (p.y1, q.y1), (a.angle, b.angle)].iter().all(|(x, y)| (x - y).abs() < 1e-6)
+    };
+    !same(&g, &CropGeometry::default()) && !d.negative.zap_crop.is_some_and(|z| same(&z, &g))
+}
+
 /// Zap! on `scan` (the photo's source, before orientation) of a photo with settings `before` and
-/// oriented size `dims`.
+/// oriented size `dims`. A crop of the user's own ([`own_crop`]) stays as it is: Zap! then only
+/// takes the film base and measures the picture (inside that crop when no frame is found).
 pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options) -> Result<Zapped, String> {
     let oriented = scan.oriented(before.orientation);
-    let frame = negative_frame::detect(&oriented, o.ratio)?;
+    let (ow, oh) = (oriented.width as f64, oriented.height as f64);
+    let found = negative_frame::detect(&oriented, o.ratio);
+    // measured on the picture itself (inside its edge, never the holes or the rebate)
+    let picture = |f: &Frame| Frame { holes: [None, None], ..*f }.crop(Margin::Inside, ow, oh);
+    if own_crop(before) {
+        let geometry = before.crop.geometry;
+        let (measured, frame) = match &found {
+            Ok(f) => (measure_in(&oriented, picture(f), 0.0)?, Some(f)),
+            Err(_) => (measure_in(&oriented, geometry.rect, OWN_CROP_BORDER)?, None),
+        };
+        let settings = converted(before, measured, frame.and_then(|f| f.base));
+        return Ok(Zapped { settings, report: report(&geometry, frame, true) });
+    }
+    let frame = found?;
     let (w, h) = dims;
-    let rect = frame.crop(o.margin, oriented.width as f64, oriented.height as f64);
+    let rect = frame.crop(o.margin, ow, oh);
     let geometry = CropGeometry { rect, angle: frame.angle }.constrained(w, h);
     let min = MIN_CROP_FRACTION * w.min(h);
     if geometry.rect.width() * w < min || geometry.rect.height() * h < min {
         return Err("no film frame found".into());
     }
-    // measured on the picture itself: nothing of the rebate left to leave out
-    let measured = measure_in(&oriented, geometry.rect, 0.0)?;
-    let mut settings = before.clone();
+    let measured = measure_in(&oriented, picture(&frame), 0.0)?;
+    let mut settings = converted(before, measured, frame.base);
     settings.crop.geometry = geometry;
+    settings.negative.zap_crop = Some(geometry);
+    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false) })
+}
+
+/// `before` converted with `measured` and, when the rebate showed, the film base.
+fn converted(before: &DevelopSettings, measured: NegativeMeasurement, base: Option<[f64; 3]>) -> DevelopSettings {
+    let mut settings = before.clone();
     let n = &mut settings.negative;
     n.enabled = true;
     n.measured = Some(measured);
-    if let Some(b) = frame.base {
+    if let Some(b) = base {
         // the picked base only counts in Advanced
         n.advanced = true;
         n.base = Some(b);
     }
-    let report = json!({
+    settings
+}
+
+/// What Zap! did: `{angle, rect, base, sprockets, sidesFound, picture, holes, cropKept}`.
+fn report(geometry: &CropGeometry, frame: Option<&Frame>, kept: bool) -> Value {
+    let r = |r: Rect| json!([r.x0, r.y0, r.x1, r.y1]);
+    json!({
         "angle": geometry.angle,
-        "rect": [geometry.rect.x0, geometry.rect.y0, geometry.rect.x1, geometry.rect.y1],
-        "base": frame.base,
-        "sprockets": frame.sprockets,
-        "sidesFound": frame.sides_found,
-    });
-    Ok(Zapped { settings, report })
+        "rect": r(geometry.rect),
+        "base": frame.and_then(|f| f.base),
+        "sprockets": frame.is_some_and(|f| f.sprockets),
+        "sidesFound": frame.map_or(0, |f| f.sides_found),
+        "picture": frame.map(|f| r(f.picture)),
+        "holes": frame.map(|f| f.holes.map(|h| h.map(|h| json!({"outer": h.outer, "inner": h.inner, "whole": h.whole})))),
+        "cropKept": kept,
+    })
 }
 
 /// Measures the oriented scan `o` inside `r` (normalized), `border` in from each edge.

@@ -254,6 +254,10 @@ pub struct Negative {
     /// the preset's typical mask colour).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub measured: Option<NegativeMeasurement>,
+    /// The crop Zap! set last: a crop that differs from it (and from the full frame) is the user's
+    /// own, which a later Zap! keeps.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zap_crop: Option<CropGeometry>,
 }
 
 impl Default for Negative {
@@ -281,6 +285,7 @@ impl Default for Negative {
             base: None,
             gray: None,
             measured: None,
+            zap_crop: None,
         }
     }
 }

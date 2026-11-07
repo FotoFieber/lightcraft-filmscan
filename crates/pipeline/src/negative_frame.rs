@@ -22,6 +22,11 @@
 //!    film evenly, though never exactly alike) and, when a format is chosen, the picture's aspect.
 //!    A side left out is placed by the format, else as deep as the side across from it.
 //! 6. **Base.** The median of the rebate (film outside the picture, light left out).
+//! 7. **Sprocket holes.** Along each long side of 35 mm film, the lines that light crosses in a run
+//!    of holes. The crop's long sides go by them rather than by the picture: just outside holes
+//!    that show whole (they stay in the picture, film between them and the film's edge), just
+//!    inside holes the holder cuts (they go; the rebate with the edge print stays). Holes are far
+//!    surer to find than a picture's edge.
 //!
 //! Nothing here panics on any input: a scan with no film frame to find is an error.
 
@@ -48,6 +53,21 @@ const STEP: f32 = 0.5;
 const REBATE_MAX: f32 = 0.6;
 /// Smallest log step a pixel pair counts for a gate edge.
 const EDGE_LOG_STEP: f32 = 0.02;
+/// The fewest whole holes a line along a row of sprocket holes crosses.
+const HOLE_RUNS_MIN: usize = 4;
+/// How far the holes' pitch and length may vary along a row (fraction of the median), and the
+/// share of the pitch a hole takes (35 mm: about 2 mm of 4.75 mm, more across a hole's middle).
+const HOLE_PITCH_TOL: f32 = 0.2;
+const HOLE_LEN_TOL: f32 = 0.35;
+const HOLE_DUTY_MIN: f32 = 0.2;
+const HOLE_DUTY_MAX: f32 = 0.8;
+/// Lines from the film's edge that may be its blurred border before whole holes start.
+const HOLE_EDGE_SLACK: usize = 1;
+/// Whole holes are at least this deep across the film for their length along it (35 mm holes are
+/// about as deep as long; a hole the holder half covers is a low slit).
+const HOLE_SQUARE_MIN: f32 = 0.6;
+/// The crop's distance from the sprocket holes (fraction of the film's extent across).
+const HOLE_MARGIN: f64 = 0.015;
 
 /// How the crop sits on the picture's edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,10 +135,31 @@ pub struct Frame {
     pub sprockets: bool,
     /// How many of the four sides the scan showed (the rest are placed).
     pub sides_found: u8,
+    /// The film runs along x (across the scan): its long sides, with the sprocket holes, are the
+    /// top and the bottom; else they are the left and the right.
+    pub along_x: bool,
+    /// The sprocket holes along each long side: `[top, bottom]` when [`Frame::along_x`], else
+    /// `[left, right]`.
+    pub holes: [Option<Holes>; 2],
+}
+
+/// A row of sprocket holes along one long side of the film, across the film normalized as
+/// [`Frame::picture`] (y for a film along x).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Holes {
+    /// The holes' edge toward the film's edge.
+    pub outer: f64,
+    /// The holes' edge toward the picture.
+    pub inner: f64,
+    /// The whole holes show: film is seen between them and the film's edge. Else the holder
+    /// covers part of them.
+    pub whole: bool,
 }
 
 impl Frame {
-    /// The crop for `margin`: the picture moved out or in by the margin, kept on the film.
+    /// The crop for `margin`: the picture moved out or in by the margin, kept on the film. A long
+    /// side with sprocket holes is cut by them instead: just outside whole holes (they show), just
+    /// inside holes the holder cuts (they don't; the rebate with the edge print does).
     pub fn crop(&self, margin: Margin, w: f64, h: f64) -> Rect {
         let (w, h) = (w.max(1.0), h.max(1.0));
         let m = margin.offset() * w.min(h);
@@ -127,7 +168,26 @@ impl Frame {
         let r = Rect::new(p.x0 - mx, p.y0 - my, p.x1 + mx, p.y1 + my);
         let f = self.film;
         let r = if margin == Margin::Border { Rect::new(r.x0.max(f.x0), r.y0.max(f.y0), r.x1.min(f.x1), r.y1.min(f.y1)) } else { r };
+        let r = self.by_holes(r);
         Rect::new(r.x0.clamp(0.0, 1.0), r.y0.clamp(0.0, 1.0), r.x1.clamp(0.0, 1.0), r.y1.clamp(0.0, 1.0))
+    }
+
+    /// `r` with its long sides moved to the sprocket holes, where they show.
+    fn by_holes(&self, r: Rect) -> Rect {
+        let f = self.film;
+        // the long sides' positions across the film, the film's edges there and its extent across
+        let (mut near, mut far, f0, f1) = if self.along_x { (r.y0, r.y1, f.y0, f.y1) } else { (r.x0, r.x1, f.x0, f.x1) };
+        let gap = (f1 - f0).max(0.0) * HOLE_MARGIN;
+        if let Some(hl) = self.holes[0] {
+            near = if hl.whole { (hl.outer - gap).max(f0) } else { hl.inner + gap };
+        }
+        if let Some(hl) = self.holes[1] {
+            far = if hl.whole { (hl.outer + gap).min(f1) } else { hl.inner - gap };
+        }
+        if far <= near {
+            return r;
+        }
+        if self.along_x { Rect::new(r.x0, near, r.x1, far) } else { Rect::new(near, r.y0, far, r.y1) }
     }
 }
 
@@ -151,6 +211,7 @@ pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
     let guess = band_base(&turned, film, threshold).ok_or("no film frame found: no film base")?;
     let light = Light::of(&guess);
     let sprockets = sprocket_share(&turned, film, threshold, &light) > 0.02;
+    let holes = if sprockets { hole_rows(&turned, film, threshold, &light) } else { [None, None] };
     let dist = distance(&turned, &guess, threshold, &light);
     let lum = turned.map(|p| (luma(p).max(0.0) + 1e-4).ln());
     let scan = Scan { dist: &dist, lum: &lum, img: &turned, light: &light, threshold, film };
@@ -165,7 +226,9 @@ pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
     plausible(&picture, w, h)?;
     let base = rebate_base(&turned, film, picture, threshold, &light);
     let norm = |r: Px| Rect::new(r.x0 as f64 / w as f64, r.y0 as f64 / h as f64, r.x1 as f64 / w as f64, r.y1 as f64 / h as f64);
-    Ok(Frame { angle, picture: norm(picture), film: norm(film), base, sprockets, sides_found })
+    let across = if along_x { h } else { w } as f64;
+    let holes = holes.map(|o| o.map(|b| Holes { outer: b.outer as f64 / across, inner: b.inner as f64 / across, whole: b.whole }));
+    Ok(Frame { angle, picture: norm(picture), film: norm(film), base, sprockets: holes.iter().any(Option::is_some), sides_found, along_x, holes })
 }
 
 // ---- the analysis image
@@ -423,6 +486,85 @@ fn sprocket_share(img: &Rgb32f, film: Px, threshold: f32, light: &Light) -> f64 
         }
     }
     if n == 0 { 0.0 } else { lit as f64 / n as f64 }
+}
+
+/// A row of sprocket holes in analysis pixels across the film (from the image's edge).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HoleRow {
+    outer: usize,
+    inner: usize,
+    whole: bool,
+}
+
+/// The sprocket holes along the film's two long sides (`[top, bottom]` or `[left, right]`). On
+/// each, the lines along the film (rows for a film along x) over its central length that light
+/// crosses in a run of holes: a good share of the line, in several separate runs (a gap between
+/// the holder and the film's edge is one long run). Whole holes have film between them and the
+/// film's edge; holes that start at the film's edge are cut by the holder.
+fn hole_rows(img: &Rgb32f, film: Px, threshold: f32, light: &Light) -> [Option<HoleRow>; 2] {
+    let along_x = film.width() >= film.height();
+    let (across0, across1, len0, len1) = if along_x { (film.y0, film.y1, film.x0, film.x1) } else { (film.x0, film.x1, film.y0, film.y1) };
+    let extent = across1.saturating_sub(across0);
+    let along: Vec<usize> = {
+        let c = central(len1.saturating_sub(len0));
+        (len0..len1).skip(c.start).take(c.len()).collect()
+    };
+    let at = |a: usize, l: usize| if along_x { px(img, l, a) } else { px(img, a, l) };
+    // a line across the film at `a` crosses a row of holes: the holes' length along it
+    let holes_at = |a: usize| {
+        let lit: Vec<bool> = along.iter().map(|l| at(a, *l).is_some_and(|p| luma(p) > threshold && light.is(p))).collect();
+        regular_holes(&lit)
+    };
+    let holey = |a: usize| holes_at(a).is_some();
+    let reach = ((extent as f64) * SEARCH) as usize;
+    let side = |inward: &dyn Fn(usize) -> Option<usize>| -> Option<HoleRow> {
+        // the first holey line from the film's edge, then as far in as the holes go
+        let first = (0..reach).find(|i| inward(*i).is_some_and(holey))?;
+        let last = (first..reach).take_while(|i| inward(*i).is_some_and(holey)).last()?;
+        let (outer, inner) = (inward(first)?, inward(last + 1)?);
+        // whole: film between them and the film's edge (a pixel or two there are its blurred
+        // border), and about as deep across the film as they are long along it (a hole the
+        // holder covers shows as a low slit)
+        let length = holes_at(inward((first + last) / 2)?)?;
+        let deep = (last + 1 - first) as f32 >= length * HOLE_SQUARE_MIN;
+        Some(HoleRow { outer, inner, whole: first > HOLE_EDGE_SLACK && deep })
+    };
+    let near = side(&|i| (across0 + i < across1).then_some(across0 + i));
+    let far = side(&|i| across1.checked_sub(1 + i).filter(|a| *a >= across0)).map(|r| HoleRow { outer: r.outer + 1, inner: r.inner + 1, ..r });
+    [near, far]
+}
+
+/// `lit` (light or not, pixel by pixel along a line) crosses a row of sprocket holes: several holes
+/// of one length, one pitch apart, each a fair part of the pitch. Light along a holder's ragged
+/// edge or through a torn film is not that regular. The holes' length along the line.
+fn regular_holes(lit: &[bool]) -> Option<f32> {
+    // the runs of light, those cut by the line's ends left out
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    let mut start = None;
+    for (i, b) in lit.iter().enumerate() {
+        match (*b, start) {
+            (true, None) => start = Some(i),
+            (false, Some(s0)) => {
+                if s0 > 0 {
+                    runs.push((s0, i - s0));
+                }
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if runs.len() < HOLE_RUNS_MIN {
+        return None;
+    }
+    let pitches: Vec<f32> = runs.windows(2).map(|w| (w[1].0 - w[0].0) as f32).collect();
+    let lens: Vec<f32> = runs.iter().map(|r| r.1 as f32).collect();
+    let (pitch, len) = (median(pitches.clone())?, median(lens.clone())?);
+    if pitch < 2.0 || len < 1.0 {
+        return None;
+    }
+    let near = |v: &[f32], m: f32, tol: f32| v.iter().all(|x| (x - m).abs() <= m * tol + 1.0);
+    let duty = len / pitch;
+    (near(&pitches, pitch, HOLE_PITCH_TOL) && near(&lens, len, HOLE_LEN_TOL) && (HOLE_DUTY_MIN..=HOLE_DUTY_MAX).contains(&duty)).then_some(len)
 }
 
 /// Each pixel's distance to the base (sum of the three log ratios); NaN for holder and light.
@@ -760,8 +902,9 @@ mod tests {
         if !inside(FILM, x, y) {
             return [0.004, 0.003, 0.003];
         }
-        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 196.0 + (y - cy).powi(2) / 64.0 < 1.0;
-        if hole(38.0) || hole(548.0) {
+        // (35 mm holes: deeper across the film than long along it)
+        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (y - cy).powi(2) / 196.0 < 1.0;
+        if hole(38.0) || hole(542.0) {
             return [0.92, 0.93, 0.97];
         }
         if !inside(PIC, x, y) || x < PIC[0] + thin {
@@ -822,13 +965,39 @@ mod tests {
 
     #[test]
     fn the_margin_moves_the_crop_in_or_out_and_stays_on_the_film() {
+        // (the ends of the frame, along the film: the long sides go by the sprocket holes)
         let f = detect(&scan(0.0, 0.0), None).unwrap();
         let (w, h) = (W as f64, H as f64);
         let [inside, edge, border] = [Margin::Inside, Margin::Edge, Margin::Border].map(|m| f.crop(m, w, h));
-        assert_eq!(edge, f.picture);
-        assert!(inside.x0 > edge.x0 && inside.y1 < edge.y1 && inside.width() < edge.width(), "{inside:?}");
-        assert!(border.x0 < edge.x0 && border.y1 > edge.y1, "{border:?}");
+        assert_eq!((edge.x0, edge.x1), (f.picture.x0, f.picture.x1));
+        assert!(inside.x0 > edge.x0 && inside.x1 < edge.x1, "{inside:?}");
+        assert!(border.x0 < edge.x0 && border.x1 > edge.x1, "{border:?}");
         assert!(border.x0 >= f.film.x0 && border.y0 >= f.film.y0 && border.x1 <= f.film.x1 && border.y1 <= f.film.y1);
+        // without holes, every side is the picture's
+        let mut no_holes = f;
+        no_holes.holes = [None, None];
+        assert_eq!(no_holes.crop(Margin::Edge, w, h), f.picture);
+        let inside = no_holes.crop(Margin::Inside, w, h);
+        assert!(inside.y0 > f.picture.y0 && inside.y1 < f.picture.y1, "{inside:?}");
+    }
+
+    /// The holder cuts the holes at the top and shows them whole at the bottom: the crop runs just
+    /// inside the cut ones (the rebate between them and the picture stays) and just outside the
+    /// whole ones, kept on the film; the ends of the frame stay on the picture.
+    #[test]
+    fn the_crop_goes_by_the_sprocket_holes() {
+        let f = detect(&scan(0.0, 0.0), None).unwrap();
+        assert!(f.along_x && f.sprockets, "{f:?}");
+        let [top, bottom] = f.holes;
+        let (top, bottom) = (top.expect("the cut holes at the top"), bottom.expect("the whole holes at the bottom"));
+        // the holes span 24..52 (the holder from 40) and 528..556 of the 600 rows
+        assert!(!top.whole && (top.outer * 600.0 - 40.0).abs() < 3.0 && (top.inner * 600.0 - 52.0).abs() < 3.0, "{top:?}");
+        assert!(bottom.whole && (bottom.outer * 600.0 - 556.0).abs() < 3.0 && (bottom.inner * 600.0 - 528.0).abs() < 3.0, "{bottom:?}");
+        let c = f.crop(Margin::Inside, W as f64, H as f64);
+        let gap = HOLE_MARGIN * f.film.height();
+        assert!((c.y0 - (top.inner + gap)).abs() < 1e-9 && c.y0 < f.picture.y0, "just inside the cut holes: {c:?}");
+        assert!((c.y1 - f.film.y1).abs() < 1e-9, "outside the whole holes, on the film: {c:?}");
+        assert!(c.x0 > f.picture.x0 && c.x1 < f.picture.x1, "the ends inside the picture: {c:?}");
     }
 
     #[test]

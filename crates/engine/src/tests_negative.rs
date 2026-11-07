@@ -97,8 +97,9 @@ fn negative_scan(dir: &std::path::Path, angle: f64) -> std::path::PathBuf {
         if !(60.0..840.0).contains(&x) || !(40.0..560.0).contains(&y) {
             return [0.004, 0.003, 0.003];
         }
-        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 196.0 + (y - cy).powi(2) / 64.0 < 1.0;
-        if hole(38.0) || hole(548.0) {
+        // (35 mm holes: deeper across the film than long along it)
+        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (y - cy).powi(2) / 196.0 < 1.0;
+        if hole(38.0) || hole(542.0) {
             return [0.92, 0.93, 0.97];
         }
         if !(120.0..780.0).contains(&x) || !(80.0..520.0).contains(&y) {
@@ -127,9 +128,14 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
     let d = s.develop_of(id).unwrap();
     let g = d.crop.geometry;
     assert!((g.angle - 1.5).abs() < 0.25, "{r}");
+    // the picture found; the crop's ends on it, its long sides by the sprocket holes (the cut ones
+    // at the top left out, the rebate below them kept; the whole ones at the bottom kept)
     let want = [120.0 / 900.0, 80.0 / 600.0, 780.0 / 900.0, 520.0 / 600.0];
-    let got = [g.rect.x0, g.rect.y0, g.rect.x1, g.rect.y1];
-    assert!(want.iter().zip(got).all(|(a, b)| (a - b).abs() < 0.015), "{got:?} {r}");
+    let pic: Vec<f64> = r["zap"]["picture"].as_array().unwrap().iter().filter_map(|v| v.as_f64()).collect();
+    assert!(want.iter().zip(&pic).all(|(a, b)| (a - b).abs() < 0.015), "{pic:?} {r}");
+    assert!((g.rect.x0 - want[0]).abs() < 0.015 && (g.rect.x1 - want[2]).abs() < 0.015, "{r}");
+    assert!(g.rect.y0 > 52.0 / 600.0 && g.rect.y0 < want[1], "below the cut holes, above the picture: {r}");
+    assert!(g.rect.y1 > 556.0 / 600.0 - 0.01, "the whole holes kept: {r}");
     let n = &d.negative;
     assert!(n.enabled && n.advanced && n.measured.is_some(), "{n:?}");
     let b = n.base.expect("the base from the rebate");
@@ -141,7 +147,7 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
     // the margins: inside is smaller than the edge
     s.execute("develop.negativeZap", &json!({})).unwrap();
     let inside = s.develop_of(id).unwrap().crop.geometry.rect;
-    assert!(inside.width() < g.rect.width() && inside.height() < g.rect.height(), "{inside:?} vs {:?}", g.rect);
+    assert!(inside.width() < g.rect.width(), "{inside:?} vs {:?}", g.rect);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -204,6 +210,48 @@ fn zap_on_a_selection_gives_each_scan_its_own_frame_in_one_undo_step() {
     let other = (blank_at + 1) % 3;
     let r = s.execute("develop.negativeZap", &json!({"ids": [ids[other]]})).unwrap();
     assert_eq!((r["changed"].as_u64(), r["id"].as_u64()), (Some(1), Some(ids[other])), "{r}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A crop the user sets is theirs: a later Zap! keeps it (and its angle) and only takes the film
+/// base and measures the picture; Zap! may redo its own crop, and Reset Crop gives it back to
+/// Zap!. Undo takes Zap!'s memory of its crop back with the rest.
+#[test]
+fn zap_keeps_a_crop_the_user_set() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-own-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = negative_scan(&dir, 1.5);
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let id = s.active().unwrap();
+    let crop = |s: &Session| s.develop_of(id).unwrap().crop.geometry;
+    // Zap!'s own crop, remembered; Zap! again may set it again
+    let r = s.execute("develop.negativeZap", &json!({})).unwrap();
+    assert_eq!(r["zap"]["cropKept"], false, "{r}");
+    let zapped = crop(&s);
+    assert_eq!(s.develop_of(id).unwrap().negative.zap_crop, Some(zapped));
+    let r = s.execute("develop.negativeZap", &json!({"margin": "edge"})).unwrap();
+    assert_eq!(r["zap"]["cropKept"], false, "{r}");
+    assert_ne!(crop(&s), zapped, "the edge margin: a new crop");
+    // the user's own crop stays, with its angle; the base is still taken
+    s.execute("crop.set", &json!({"rect": [0.2, 0.2, 0.7, 0.7], "angle": 0.0})).unwrap();
+    let own = crop(&s);
+    s.execute("develop.negative", &json!({"clearBase": true})).unwrap();
+    let r = s.execute("develop.negativeZap", &json!({})).unwrap();
+    assert_eq!(r["zap"]["cropKept"], true, "{r}");
+    assert_eq!(crop(&s), own);
+    let n = s.develop_of(id).unwrap().negative.clone();
+    assert!(n.base.is_some() && n.measured.is_some() && n.enabled, "{n:?}");
+    // Reset Crop: Zap! crops again
+    s.execute("crop.reset", &json!({})).unwrap();
+    let r = s.execute("develop.negativeZap", &json!({})).unwrap();
+    assert_eq!(r["zap"]["cropKept"], false, "{r}");
+    assert!((crop(&s).angle - 1.5).abs() < 0.25, "{r}");
+    // one undo: Zap!'s crop and its memory of it go back together
+    let before = s.develop_of(id).unwrap().negative.zap_crop;
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert_eq!(crop(&s), lightcraft_geom::CropGeometry::default());
+    assert_ne!(s.develop_of(id).unwrap().negative.zap_crop, before);
     std::fs::remove_dir_all(&dir).ok();
 }
 
