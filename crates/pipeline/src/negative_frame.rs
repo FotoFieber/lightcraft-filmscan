@@ -35,7 +35,9 @@
 //!    surer to find than a picture's edge.
 //!
 //! [`detect_strip`] is for a picture that fills the film strip (35 mm across a medium-format
-//! camera's gate): steps 1–3 and 8 only, the strip itself taken as the picture.
+//! camera's gate): steps 1–3 and 8 only, the strip itself taken as the picture. [`detect_slide`]
+//! is for a slide (a positive), whose rebate is dark: the picture by its straight edges against
+//! the rebate, a side that doesn't show placed about the middle between the rows of holes.
 //!
 //! Nothing here panics on any input: a scan with no film frame to find is an error.
 
@@ -280,6 +282,196 @@ pub fn detect_strip(src: &Rgb32f) -> Result<Frame, String> {
     let across = if along_x { h } else { w } as f64;
     let holes = holes.map(|o| o.map(|b| Holes { outer: b.outer as f64 / across, inner: b.inner as f64 / across, whole: b.whole }));
     Ok(Frame { angle, picture: norm(picture), film: norm(film), base, sprockets: holes.iter().any(Option::is_some), sides_found: 4, along_x, holes })
+}
+
+/// How much brighter than the slide's rebate a picture pixel is.
+const SLIDE_STEP: f32 = 2.5;
+/// Light through a sprocket hole is brighter than this fraction of the scan's highlights.
+const SLIDE_HOLE_FRACTION: f32 = 0.5;
+/// Without holes to read it beside, the low quantile of the scan's brightness taken as the
+/// rebate (the holder's black is darker still).
+const SLIDE_BLACK_Q: f64 = 0.05;
+/// A line across the picture holds at least this share of picture pixels.
+const SLIDE_SHARE: f64 = 0.15;
+/// Lines below the share bridged inside a run (a dark detail at the picture's edge), as a
+/// fraction of the extent.
+const SLIDE_BRIDGE: f64 = 0.05;
+/// A slide picture's edge: the log brightness rises inward by at least this much ...
+const SLIDE_EDGE_STEP: f32 = 0.2;
+/// ... along at least this share of the side (a row of holes covers less than two thirds).
+const SLIDE_EDGE_SHARE: f64 = 0.7;
+/// How far in from the scan's edge a slide picture's edge is looked for (fraction of the extent).
+const SLIDE_EDGE_REACH: f64 = 0.35;
+
+/// The picture on a scan of a slide (a positive): its rebate is dark, the densest part, and light
+/// through the sprocket holes the brightest. The rebate's level is read between the holes (else a
+/// low quantile of the scan). The picture is the largest block of lines, across the middle, mostly
+/// brighter than the rebate by [`SLIDE_STEP`]: columns over the middle rows first, then rows over
+/// those columns, lines crossing a row of holes left out. Light past the film's end is a separate
+/// block and stays out. A side whose edge doesn't show (a night sky as dark as the rebate) is placed
+/// across from the other, the frame centred between the two rows of holes, else by the format
+/// (`ratio`, the picture's length along the film over its height; 3:2 when none is chosen). No
+/// base: a slide is not converted.
+pub fn detect_slide(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
+    if src.width < 16 || src.height < 16 || src.data.len() != src.width.saturating_mul(src.height) {
+        return Err("the scan is too small to find a film frame on".into());
+    }
+    let small = analysis_image(src);
+    let lum: Vec<f32> = small.data.iter().map(|p| luma(*p)).collect();
+    let peak = quantile(lum.clone(), 0.99).unwrap_or(0.0);
+    if peak.is_nan() || peak <= 1e-6 {
+        return Err("no film frame found: the scan is black".into());
+    }
+    let rebate = slide_rebate(&small, peak * SLIDE_HOLE_FRACTION).or_else(|| quantile(lum, SLIDE_BLACK_Q)).unwrap_or(0.0).max(peak * 1e-4);
+    let threshold = rebate * SLIDE_STEP;
+    let angle = level_angle(&small, threshold).unwrap_or(0.0);
+    let turned = turn(&small, angle);
+    let (w, h) = (turned.width, turned.height);
+    let lit = |x: usize, y: usize| px(&turned, x, y).is_some_and(|p| luma(p) > threshold);
+    let rows = central(h);
+    let cols: Vec<bool> = (0..w).map(|x| rows.clone().filter(|y| lit(x, *y)).count() as f64 >= rows.len() as f64 * SLIDE_SHARE).collect();
+    let (x0, x1) = longest_run(&cols, ((w as f64) * SLIDE_BRIDGE) as usize).ok_or("no film frame found")?;
+    let lines: Vec<bool> = (0..h)
+        .map(|y| {
+            let on: Vec<bool> = (x0..x1).map(|x| lit(x, y)).collect();
+            on.iter().filter(|b| **b).count() as f64 >= on.len() as f64 * SLIDE_SHARE && regular_holes(&on).is_none()
+        })
+        .collect();
+    let (y0, y1) = longest_run(&lines, ((h as f64) * SLIDE_BRIDGE) as usize).ok_or("no film frame found")?;
+    // each side by the picture's straight edge where it shows, else by the holes and the format,
+    // else by the brightness
+    let ln = turned.map(|p| (luma(p).max(0.0) + 1e-5).ln());
+    // across the film, the picture lies between the rows of holes
+    let hole_light = peak * SLIDE_HOLE_FRACTION;
+    let ratio = ratio.filter(|r| r.is_finite() && *r > 0.0).unwrap_or(1.5);
+    let edge = |side: Side, past: usize| slide_edge(&ln, side, past);
+    let picture = if let Some((a, b)) = holes_inner(&turned, hole_light, true) {
+        let (x0, x1) = (edge(Side::Left, 0).unwrap_or(x0), edge(Side::Right, 0).unwrap_or(x1));
+        let (top, bottom) = (edge(Side::Top, a), edge(Side::Bottom, h.saturating_sub(b)));
+        let (y0, y1) = across(top, bottom, (a + b) as f64 / 2.0, (x1.saturating_sub(x0)) as f64 / ratio, (y0, y1));
+        Px { x0, y0, x1, y1 }
+    } else if let Some((a, b)) = holes_inner(&turned, hole_light, false) {
+        let (y0, y1) = (edge(Side::Top, 0).unwrap_or(y0), edge(Side::Bottom, 0).unwrap_or(y1));
+        let (left, right) = (edge(Side::Left, a), edge(Side::Right, w.saturating_sub(b)));
+        let (x0, x1) = across(left, right, (a + b) as f64 / 2.0, (y1.saturating_sub(y0)) as f64 / ratio, (x0, x1));
+        Px { x0, y0, x1, y1 }
+    } else {
+        let [l, t, r, b] = [Side::Left, Side::Top, Side::Right, Side::Bottom].map(|s| edge(s, 0));
+        Px { x0: l.unwrap_or(x0), y0: t.unwrap_or(y0), x1: r.unwrap_or(x1), y1: b.unwrap_or(y1) }
+    };
+    plausible(&picture, w, h)?;
+    let r = Rect::new(picture.x0 as f64 / w as f64, picture.y0 as f64 / h as f64, picture.x1 as f64 / w as f64, picture.y1 as f64 / h as f64);
+    Ok(Frame { angle, picture: r, film: r, base: None, sprockets: false, sides_found: 4, along_x: w >= h, holes: [None, None] })
+}
+
+/// A slide picture's edge on `side` of `ln` (log brightness): the innermost line within reach of
+/// the scan's edge where the brightness steps up inward by [`SLIDE_EDGE_STEP`] along most of the
+/// side (the film's own edge against the holder steps up too, further out; light past the film's
+/// end steps down), at least `past` lines in. As a box coordinate: the first picture line, or the
+/// end past the last.
+fn slide_edge(ln: &Plane, side: Side, past: usize) -> Option<usize> {
+    let (w, h) = (ln.width, ln.height);
+    let vertical = matches!(side, Side::Left | Side::Right);
+    let (extent, across) = if vertical { (w, h) } else { (h, w) };
+    let reach = ((extent as f64) * SLIDE_EDGE_REACH) as usize;
+    let lines = central(across);
+    let at = |d: usize, a: usize| if vertical { px(ln, d, a) } else { px(ln, a, d) };
+    // `i` lines in from the scan's edge, as a coordinate along the extent
+    let coord = |i: usize| match side {
+        Side::Left | Side::Top => Some(i),
+        Side::Right | Side::Bottom => extent.checked_sub(1 + i),
+    };
+    let gap = 2;
+    (gap.max(past)..reach.saturating_sub(gap))
+        .rev()
+        .find(|i| {
+            let (Some(outer), Some(inner)) = (coord(i - gap), coord(i + gap)) else { return false };
+            let up = lines.clone().filter(|a| matches!((at(outer, *a), at(inner, *a)), (Some(o), Some(n)) if n - o > SLIDE_EDGE_STEP)).count();
+            up as f64 >= lines.len() as f64 * SLIDE_EDGE_SHARE
+        })
+        .and_then(|i| match side {
+            Side::Left | Side::Top => coord(i),
+            Side::Right | Side::Bottom => coord(i).map(|c| c + 1),
+        })
+}
+
+/// The inner edges of a slide's two rows of sprocket holes (the first line past the near row, the
+/// last line before the far one): rows of the scan (`horizontal`, film along x) or else columns
+/// that cross holes, the run of them nearest each end of the scan (holes run along the film's
+/// edges; a regular pattern further in, in the picture, is no row of holes).
+fn holes_inner(img: &Rgb32f, light: f32, horizontal: bool) -> Option<(usize, usize)> {
+    let (w, h) = (img.width, img.height);
+    let (lines, len) = if horizontal { (h, w) } else { (w, h) };
+    let holey = |a: usize| {
+        let lit: Vec<bool> =
+            (0..len).map(|b| if horizontal { px(img, b, a) } else { px(img, a, b) }).map(|p| p.is_some_and(|p| luma(p) > light)).collect();
+        regular_holes(&lit).is_some()
+    };
+    let quarter = lines / 4;
+    // the inner edge of the outermost run of holey lines within a quarter of either end
+    let start = (0..quarter).find(|a| holey(*a))?;
+    let first = (start..quarter).take_while(|a| holey(*a)).last()?;
+    let end = (lines - quarter..lines).rev().find(|a| holey(*a))?;
+    let second = (lines - quarter..=end).rev().take_while(|a| holey(*a)).last()?;
+    Some((first + 1, second))
+}
+
+/// A slide picture's two sides across the film (`near`, `far`: their edges where they show): one
+/// mirrored about the middle `m` between the holes when only the other shows, both `height` apart
+/// about it when neither does. `fallback` when what is placed falls outside the scan.
+fn across(near: Option<usize>, far: Option<usize>, m: f64, height: f64, fallback: (usize, usize)) -> (usize, usize) {
+    let at = |v: f64| (v.is_finite() && v >= 0.0).then(|| v.round() as usize);
+    let placed = match (near, far) {
+        (Some(a), Some(b)) => Some((a, b)),
+        (Some(a), None) => at(2.0 * m - a as f64).map(|b| (a, b)),
+        (None, Some(b)) => at(2.0 * m - b as f64).map(|a| (a, b)),
+        (None, None) => at(m - height / 2.0).zip(at(m + height / 2.0)),
+    };
+    placed.filter(|(a, b)| a < b).unwrap_or(fallback)
+}
+
+/// The brightness of a slide's rebate: the median, along the rows (or else the columns) that cross
+/// a row of sprocket holes, of the film between the first and the last hole that is not a hole.
+fn slide_rebate(img: &Rgb32f, light: f32) -> Option<f32> {
+    let (w, h) = (img.width, img.height);
+    let mut v: Vec<f32> = Vec::new();
+    for horizontal in [true, false] {
+        let (lines, len) = if horizontal { (h, w) } else { (w, h) };
+        for a in 0..lines {
+            let line: Vec<f32> = (0..len).filter_map(|b| if horizontal { px(img, b, a) } else { px(img, a, b) }).map(luma).collect();
+            let lit: Vec<bool> = line.iter().map(|l| *l > light).collect();
+            if regular_holes(&lit).is_none() {
+                continue;
+            }
+            let (Some(first), Some(last)) = (lit.iter().position(|b| *b), lit.iter().rposition(|b| *b)) else { continue };
+            v.extend(line.iter().zip(&lit).skip(first).take(last - first).filter(|(_, b)| !**b).map(|(l, _)| *l));
+        }
+        if !v.is_empty() {
+            break;
+        }
+    }
+    median(v)
+}
+
+/// The longest run of `true` in `v` (gaps of up to `bridge` bridged), as `start..end`.
+fn longest_run(v: &[bool], bridge: usize) -> Option<(usize, usize)> {
+    let mut best: Option<(usize, usize)> = None;
+    let mut run: Option<(usize, usize)> = None;
+    for (i, on) in v.iter().enumerate() {
+        if !*on {
+            continue;
+        }
+        run = match run {
+            Some((s, e)) if i <= e + bridge => Some((s, i + 1)),
+            _ => Some((i, i + 1)),
+        };
+        if let Some((s, e)) = run
+            && best.is_none_or(|(bs, be)| e - s > be - bs)
+        {
+            best = Some((s, e));
+        }
+    }
+    best
 }
 
 /// What [`detect`] and [`detect_strip`] find first: the scan turned straight, the film in it, the
@@ -1224,6 +1416,48 @@ mod tests {
         assert!((f.picture.y0 * 600.0 - 84.0).abs() < 6.0 && (f.picture.y1 * 600.0 - 516.0).abs() < 6.0, "between the holes: {f:?}");
         assert!((f.picture.x0 - f.film.x0).abs() < 1e-9 && (f.picture.x1 - f.film.x1).abs() < 1e-9, "{f:?}");
         assert_eq!(format_ratio(STRIP_FORMAT), Ok(None));
+    }
+
+    /// A slide (a positive) on a 900 × 600 scan, in Rec.2020: the film across the whole width on
+    /// 20..580 (the holder black above and below), a dark rebate, sprocket holes round 45 and 555
+    /// with light through them, and a brighter picture on 120..780 × 90..510; with `night`, the
+    /// picture's top third (a night sky) as dark as the rebate.
+    fn slide_scan(night: bool) -> Rgb32f {
+        let m = SRGB.to_space(&REC2020).to_f32();
+        Rgb32f::from_fn(W, H, |x, y| {
+            let (x, y) = (x as f64 + 0.5, y as f64 + 0.5);
+            let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (y - cy).powi(2) / 196.0 < 1.0;
+            let v = if !(20.0..580.0).contains(&y) {
+                0.0005
+            } else if hole(45.0) || hole(555.0) {
+                0.9
+            } else if !inside([120.0, 90.0, 780.0, 510.0], x, y) {
+                0.012
+            } else if night && y < 230.0 {
+                0.013
+            } else {
+                // soft blobs, no line straight across the picture
+                0.25 + 0.2 * ((x / 41.0).sin() + (y / 29.0).cos() + ((x + y) / 53.0).sin()) / 3.0
+            } as f32;
+            let p = [v, v, v * 0.9];
+            m.map(|r| r[0] * p[0] + r[1] * p[1] + r[2] * p[2])
+        })
+    }
+
+    /// A slide's picture is found by its edges against the dark rebate; a side that doesn't show
+    /// (a night sky as dark as the rebate) is placed across from the other about the middle between
+    /// the rows of holes. No base: a slide is not converted.
+    #[test]
+    fn a_slide_is_found_by_its_edges_against_the_dark_rebate() {
+        let want = [120.0, 90.0, 780.0, 510.0];
+        for night in [false, true] {
+            let f = detect_slide(&slide_scan(night), None).unwrap();
+            assert!(near(f.picture, want, 0.012), "night {night}: {f:?}");
+            assert_eq!(f.base, None);
+        }
+        // a negative's orange-and-dense look is no slide's, but nothing panics on it either
+        let _ = detect_slide(&scan(0.0, 0.0), None);
+        assert!(detect_slide(&Rgb32f::filled(64, 48, [0.0; 3]), None).is_err());
     }
 
     #[test]

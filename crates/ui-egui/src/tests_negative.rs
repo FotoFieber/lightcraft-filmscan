@@ -159,8 +159,7 @@ fn photo_zap_asks_for_its_choices_and_runs_with_them() {
         assert!(h.app.widgets.iter().any(|(id, _)| id == w), "{w} in the dialog");
     }
     assert_eq!(h.app.session.develop_of(id).unwrap(), before);
-    // a slide with the holes kept: only cropped, to the holes
-    *film = "slide".into();
+    // the holes kept this time
     *sprockets = "keep".into();
     *margin = "edge".into();
     let r = h.request("ui.dialog.confirm", json!({}), T);
@@ -169,9 +168,12 @@ fn photo_zap_asks_for_its_choices_and_runs_with_them() {
     let d = h.app.session.develop_of(id).unwrap();
     let g = d.crop.geometry.rect;
     assert!(g.y1 > 556.0 / 600.0 - 0.01 && (g.x0 - 120.0 / 900.0).abs() < 0.015, "the whole holes kept: {g:?} toast {:?}", h.app.ui.toast);
-    assert!(!d.negative.enabled, "a slide is not converted");
+    assert!(d.negative.enabled, "{:?}", d.negative);
     // the next Zap! starts from them
-    assert_eq!((h.app.ui.negative_zap_film.as_str(), h.app.ui.negative_zap_sprockets.as_str()), ("slide", "keep"));
+    assert_eq!(
+        (h.app.ui.negative_zap_film.as_str(), h.app.ui.negative_zap_sprockets.as_str(), h.app.ui.negative_zap_margin.as_str()),
+        ("negative", "keep", "edge")
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 

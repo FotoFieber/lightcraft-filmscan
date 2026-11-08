@@ -122,7 +122,11 @@ pub fn own_crop(d: &DevelopSettings) -> bool {
 pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options) -> Result<Zapped, String> {
     let oriented = scan.oriented(before.orientation);
     let (ow, oh) = (oriented.width as f64, oriented.height as f64);
-    let found = if o.strip { negative_frame::detect_strip(&oriented) } else { negative_frame::detect(&oriented, o.ratio) };
+    let found = match o.film {
+        _ if o.strip => negative_frame::detect_strip(&oriented),
+        Film::Slide => negative_frame::detect_slide(&oriented, o.ratio),
+        Film::Negative => negative_frame::detect(&oriented, o.ratio),
+    };
     // measured on the picture itself (inside its edge, never the holes or the rebate)
     let picture = |f: &Frame| Frame { holes: [None, None], ..*f }.crop(Margin::Inside, ow, oh);
     if o.film == Film::Slide {

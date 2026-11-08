@@ -152,31 +152,65 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
 }
 
 #[test]
-fn zap_removes_the_sprocket_holes_unless_told_to_keep_them_and_only_crops_a_slide() {
+fn zap_removes_the_sprocket_holes_and_crops_a_panorama_to_the_whole_strip() {
     let dir = std::env::temp_dir().join(format!("lc-zap-holes-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = negative_scan(&dir, 0.0);
     let mut s = Session::new().with_fs();
     s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
     let id = s.active().unwrap();
-    let before = s.develop_of(id).unwrap();
     // by default the crop ends at the picture, the holes and the rebate beside them left out
     s.execute("develop.negativeZap", &json!({"margin": "edge"})).unwrap();
     let g = s.develop_of(id).unwrap().crop.geometry.rect;
     assert!((g.y0 - 80.0 / 600.0).abs() < 0.015 && (g.y1 - 520.0 / 600.0).abs() < 0.015, "{g:?}");
-    s.execute("edit.undo", &json!({})).unwrap();
-    // a slide: the same crop, and no conversion
-    s.execute("develop.negativeZap", &json!({"margin": "edge", "film": "slide"})).unwrap();
-    let d = s.develop_of(id).unwrap();
-    assert!((d.crop.geometry.rect.y0 - g.y0).abs() < 1e-9 && (d.crop.geometry.rect.x0 - g.x0).abs() < 1e-9, "{:?}", d.crop.geometry);
-    assert_eq!(d.negative.enabled, before.negative.enabled);
-    assert_eq!((d.negative.base, d.negative.measured.is_some()), (before.negative.base, before.negative.measured.is_some()));
     s.execute("edit.undo", &json!({})).unwrap();
     // a picture that fills the strip: the crop is the film inside the holder, holes and all
     s.execute("develop.negativeZap", &json!({"margin": "edge", "format": "135pano"})).unwrap();
     let g = s.develop_of(id).unwrap().crop.geometry.rect;
     let film = [60.0 / 900.0, 40.0 / 600.0, 840.0 / 900.0, 560.0 / 600.0];
     assert!([g.x0, g.y0, g.x1, g.y1].iter().zip(film).all(|(a, b)| (a - b).abs() < 0.012), "{g:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A PNG of a slide (a positive) on a 900 × 600 scan: the film across the width on 20..580, a dark
+/// rebate, sprocket holes round 45 and 555 with light through them, and a brighter picture on
+/// 120..780 × 90..510.
+fn slide_scan(dir: &std::path::Path) -> std::path::PathBuf {
+    let img = lightcraft_raster::Rgb32f::from_fn(900, 600, |x, y| {
+        let (x, y) = (x as f64 + 0.5, y as f64 + 0.5);
+        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (y - cy).powi(2) / 196.0 < 1.0;
+        let v = if !(20.0..580.0).contains(&y) {
+            0.0005
+        } else if hole(45.0) || hole(555.0) {
+            0.9
+        } else if !((120.0..780.0).contains(&x) && (90.0..510.0).contains(&y)) {
+            0.012
+        } else {
+            0.25 + 0.2 * ((x / 41.0).sin() + (y / 29.0).cos() + ((x + y) / 53.0).sin()) / 3.0
+        } as f32;
+        [v, v, v * 0.9]
+    });
+    let png = lightcraft_codecs::encode::encode_png(&lightcraft_codecs::encode::EncodeImage::rgba8(&img.to_srgb8()), &Default::default()).unwrap();
+    let path = dir.join("slide.png");
+    std::fs::write(&path, png).unwrap();
+    path
+}
+
+#[test]
+fn zap_only_crops_a_slide() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-slide-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = slide_scan(&dir);
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let id = s.active().unwrap();
+    let before = s.develop_of(id).unwrap();
+    s.execute("develop.negativeZap", &json!({"margin": "edge", "film": "slide"})).unwrap();
+    let d = s.develop_of(id).unwrap();
+    let g = d.crop.geometry.rect;
+    let want = [120.0 / 900.0, 90.0 / 600.0, 780.0 / 900.0, 510.0 / 600.0];
+    assert!([g.x0, g.y0, g.x1, g.y1].iter().zip(want).all(|(a, b)| (a - b).abs() < 0.012), "{g:?}");
+    assert_eq!(d.negative, lightcraft_develop::Negative { zap_crop: d.negative.zap_crop, ..before.negative.clone() }, "no conversion");
     std::fs::remove_dir_all(&dir).ok();
 }
 
