@@ -171,6 +171,12 @@ fn zap_removes_the_sprocket_holes_unless_told_to_keep_them_and_only_crops_a_slid
     assert!((d.crop.geometry.rect.y0 - g.y0).abs() < 1e-9 && (d.crop.geometry.rect.x0 - g.x0).abs() < 1e-9, "{:?}", d.crop.geometry);
     assert_eq!(d.negative.enabled, before.negative.enabled);
     assert_eq!((d.negative.base, d.negative.measured.is_some()), (before.negative.base, before.negative.measured.is_some()));
+    s.execute("edit.undo", &json!({})).unwrap();
+    // a picture that fills the strip: the crop is the film inside the holder, holes and all
+    s.execute("develop.negativeZap", &json!({"margin": "edge", "format": "135pano"})).unwrap();
+    let g = s.develop_of(id).unwrap().crop.geometry.rect;
+    let film = [60.0 / 900.0, 40.0 / 600.0, 840.0 / 900.0, 560.0 / 600.0];
+    assert!([g.x0, g.y0, g.x1, g.y1].iter().zip(film).all(|(a, b)| (a - b).abs() < 0.012), "{g:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
 

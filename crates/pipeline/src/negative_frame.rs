@@ -34,6 +34,9 @@
 //!    inside holes the holder cuts (they go; the rebate with the edge print stays). Holes are far
 //!    surer to find than a picture's edge.
 //!
+//! [`detect_strip`] is for a picture that fills the film strip (35 mm across a medium-format
+//! camera's gate): steps 1–3 and 8 only, the strip itself taken as the picture.
+//!
 //! Nothing here panics on any input: a scan with no film frame to find is an error.
 
 use lightcraft_color::{Mat3, REC2020, SRGB};
@@ -47,6 +50,9 @@ pub const ANALYSIS_EDGE: usize = 1000;
 pub const MAX_ANGLE: f64 = 10.0;
 /// Film is brighter than this fraction of the scan's highlights; the holder is darker.
 const FILM_FRACTION: f32 = 0.08;
+/// The same for a picture that fills the strip ([`detect_strip`]): dense film (a dark sky, dark
+/// water) reaches the holes' edge there, and the light through the holes sets the highlights.
+const STRIP_FILM_FRACTION: f32 = 0.02;
 /// Width of the bands the first base guess reads, as a fraction of the shorter side.
 const BAND: f64 = 0.03;
 /// The part of each side a profile reads (the middle, away from the corners).
@@ -126,8 +132,9 @@ impl Margin {
 }
 
 /// Film formats a frame can be placed by: id, label, and the picture's length along the film over
-/// its height across it. "auto" assumes none.
-pub const FORMATS: [(&str, &str, Option<f64>); 11] = [
+/// its height across it. "auto" assumes none; [`STRIP_FORMAT`] has none either: its picture is the
+/// whole strip ([`detect_strip`]).
+pub const FORMATS: [(&str, &str, Option<f64>); 12] = [
     ("auto", "Auto", None),
     ("35mm", "35 mm (3:2)", Some(36.0 / 24.0)),
     ("half", "Half Frame", Some(18.0 / 24.0)),
@@ -139,7 +146,12 @@ pub const FORMATS: [(&str, &str, Option<f64>); 11] = [
     ("69", "6×9", Some(84.0 / 56.0)),
     ("612", "6×12", Some(118.0 / 56.0)),
     ("617", "6×17", Some(168.0 / 56.0)),
+    (STRIP_FORMAT, "35 mm Panorama (Sprockets)", None),
 ];
+
+/// 35 mm film across a medium-format camera's gate: the picture fills the strip, sprocket holes and
+/// all.
+pub const STRIP_FORMAT: &str = "135pano";
 
 /// The along-the-film aspect of format `id` (`None` for auto); `Err` for an unknown id.
 pub fn format_ratio(id: &str) -> Result<Option<f64>, String> {
@@ -221,23 +233,8 @@ impl Frame {
 /// along the film over its height across it, see [`FORMATS`]) places a side the scan doesn't show
 /// and weighs the choice of sides; without it, sides are placed by the rebate across from them.
 pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
-    if src.width < 16 || src.height < 16 || src.data.len() != src.width.saturating_mul(src.height) {
-        return Err("the scan is too small to find a film frame on".into());
-    }
-    let small = analysis_image(src);
-    let peak = quantile(small.data.iter().map(|p| luma(*p)).collect(), 0.99).unwrap_or(0.0);
-    if peak.is_nan() || peak <= 1e-6 {
-        return Err("no film frame found: the scan is black".into());
-    }
-    let threshold = peak * FILM_FRACTION;
-    let angle = level_angle(&small, threshold).unwrap_or(0.0);
-    let turned = turn(&small, angle);
+    let Strip { angle, turned, threshold, film, guess, light, holes } = strip(src, FILM_FRACTION)?;
     let (w, h) = (turned.width, turned.height);
-    let film = film_box(&turned, threshold).ok_or("no film frame found: no film inside the holder")?;
-    let guess = band_base(&turned, film, threshold).ok_or("no film frame found: no film base")?;
-    let light = Light::of(&guess);
-    let sprockets = sprocket_share(&turned, film, threshold, &light) > 0.02;
-    let holes = if sprockets { hole_rows(&turned, film, threshold, &light) } else { [None, None] };
     let dist = distance(&turned, &guess, threshold, &light);
     let lum = turned.map(|p| (luma(p).max(0.0) + 1e-4).ln());
     // the film runs along the sprocket holes, else along the film's longer side
@@ -256,6 +253,66 @@ pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
     let across = if along_x { h } else { w } as f64;
     let holes = holes.map(|o| o.map(|b| Holes { outer: b.outer as f64 / across, inner: b.inner as f64 / across, whole: b.whole }));
     Ok(Frame { angle, picture: norm(picture), film: norm(film), base, sprockets: holes.iter().any(Option::is_some), sides_found, along_x, holes })
+}
+
+/// The film strip on `src`, for a picture that fills it, sprocket holes and all (35 mm across a
+/// medium-format camera's gate): the straighten angle, the film inside the holder as the picture
+/// (the strip's ends taken as the picture's, its long sides between the holes' inner edges where
+/// they show, as the part a measurement reads) and the base from the rebate beside the holes.
+pub fn detect_strip(src: &Rgb32f) -> Result<Frame, String> {
+    let Strip { angle, turned, threshold, film, guess: _, light, holes } = strip(src, STRIP_FILM_FRACTION)?;
+    let (w, h) = (turned.width, turned.height);
+    plausible(&film, w, h)?;
+    let along_x = film.width() >= film.height();
+    let mut picture = film;
+    let (near, far) = if along_x { (&mut picture.y0, &mut picture.y1) } else { (&mut picture.x0, &mut picture.x1) };
+    if let Some(r) = holes[0] {
+        *near = r.inner.max(*near);
+    }
+    if let Some(r) = holes[1] {
+        *far = r.inner.min(*far);
+    }
+    if picture.width() == 0 || picture.height() == 0 {
+        picture = film;
+    }
+    let base = rebate_base(&turned, film, picture, threshold, &light);
+    let norm = |r: Px| Rect::new(r.x0 as f64 / w as f64, r.y0 as f64 / h as f64, r.x1 as f64 / w as f64, r.y1 as f64 / h as f64);
+    let across = if along_x { h } else { w } as f64;
+    let holes = holes.map(|o| o.map(|b| Holes { outer: b.outer as f64 / across, inner: b.inner as f64 / across, whole: b.whole }));
+    Ok(Frame { angle, picture: norm(picture), film: norm(film), base, sprockets: holes.iter().any(Option::is_some), sides_found: 4, along_x, holes })
+}
+
+/// What [`detect`] and [`detect_strip`] find first: the scan turned straight, the film in it, the
+/// first base guess, the light through the holes and the holes.
+struct Strip {
+    angle: f64,
+    turned: Rgb32f,
+    threshold: f32,
+    film: Px,
+    guess: [f32; 3],
+    light: Light,
+    holes: [Option<HoleRow>; 2],
+}
+
+/// `fraction`: of the scan's highlights, what film is brighter than.
+fn strip(src: &Rgb32f, fraction: f32) -> Result<Strip, String> {
+    if src.width < 16 || src.height < 16 || src.data.len() != src.width.saturating_mul(src.height) {
+        return Err("the scan is too small to find a film frame on".into());
+    }
+    let small = analysis_image(src);
+    let peak = quantile(small.data.iter().map(|p| luma(*p)).collect(), 0.99).unwrap_or(0.0);
+    if peak.is_nan() || peak <= 1e-6 {
+        return Err("no film frame found: the scan is black".into());
+    }
+    let threshold = peak * fraction;
+    let angle = level_angle(&small, threshold).unwrap_or(0.0);
+    let turned = turn(&small, angle);
+    let film = film_box(&turned, threshold).ok_or("no film frame found: no film inside the holder")?;
+    let guess = band_base(&turned, film, threshold).ok_or("no film frame found: no film base")?;
+    let light = Light::of(&guess);
+    let sprockets = sprocket_share(&turned, film, threshold, &light) > 0.02;
+    let holes = if sprockets { hole_rows(&turned, film, threshold, &light) } else { [None, None] };
+    Ok(Strip { angle, turned, threshold, film, guess, light, holes })
 }
 
 // ---- the analysis image
@@ -1140,6 +1197,33 @@ mod tests {
         assert!((c.y0 - (top.inner + gap)).abs() < 1e-9 && c.y0 < f.picture.y0, "just inside the cut holes: {c:?}");
         assert!((c.y1 - f.film.y1).abs() < 1e-9, "outside the whole holes, on the film: {c:?}");
         assert!(c.x0 > f.picture.x0 && c.x1 < f.picture.x1, "the ends inside the picture: {c:?}");
+    }
+
+    /// 35 mm across a medium-format gate: the picture fills the strip, between and beside the
+    /// holes, with a dense sky along the top (darker than a frame's threshold of the holes' light).
+    /// The strip is the film inside the holder; a measurement reads between the holes.
+    #[test]
+    fn a_picture_that_fills_the_strip_is_the_whole_strip() {
+        let m = SRGB.to_space(&REC2020).to_f32();
+        let img = Rgb32f::from_fn(W, H, |x, y| {
+            let (x, y) = (x as f64 + 0.5, y as f64 + 0.5);
+            let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (y - cy).powi(2) / 196.0 < 1.0;
+            let p = if !inside(FILM, x, y) {
+                [0.004, 0.003, 0.003]
+            } else if hole(70.0) || hole(530.0) {
+                [0.92, 0.93, 0.97]
+            } else {
+                let t = if y < 160.0 { 0.12 } else { 0.2 + 0.25 * ((x / 37.0).sin() * (y / 23.0).cos()).abs() };
+                BASE.map(|c| c * t as f32)
+            };
+            m.map(|r| r[0] * p[0] + r[1] * p[1] + r[2] * p[2])
+        });
+        let f = detect_strip(&img).unwrap();
+        assert!(near(f.film, FILM, 0.012), "{f:?}");
+        assert!(f.along_x && f.holes.iter().all(Option::is_some), "{f:?}");
+        assert!((f.picture.y0 * 600.0 - 84.0).abs() < 6.0 && (f.picture.y1 * 600.0 - 516.0).abs() < 6.0, "between the holes: {f:?}");
+        assert!((f.picture.x0 - f.film.x0).abs() < 1e-9 && (f.picture.x1 - f.film.x1).abs() < 1e-9, "{f:?}");
+        assert_eq!(format_ratio(STRIP_FORMAT), Ok(None));
     }
 
     #[test]

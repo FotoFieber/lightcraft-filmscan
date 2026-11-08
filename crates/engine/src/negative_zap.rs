@@ -46,11 +46,13 @@ pub struct Options {
     pub ratio: Option<f64>,
     pub sprockets: Sprockets,
     pub film: Film,
+    /// The picture is the whole film strip ([`negative_frame::STRIP_FORMAT`]).
+    pub strip: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative }
+        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative, strip: false }
     }
 }
 
@@ -79,7 +81,8 @@ impl Options {
             Some(Value::String(v)) if v == "slide" => Film::Slide,
             Some(v) => return Err(format!("`film` must be negative or slide, not {v}")),
         };
-        Ok(Self { margin, ratio, sprockets, film })
+        let strip = p.get("format").and_then(Value::as_str) == Some(negative_frame::STRIP_FORMAT);
+        Ok(Self { margin, ratio, sprockets, film, strip })
     }
 }
 
@@ -119,7 +122,7 @@ pub fn own_crop(d: &DevelopSettings) -> bool {
 pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options) -> Result<Zapped, String> {
     let oriented = scan.oriented(before.orientation);
     let (ow, oh) = (oriented.width as f64, oriented.height as f64);
-    let found = negative_frame::detect(&oriented, o.ratio);
+    let found = if o.strip { negative_frame::detect_strip(&oriented) } else { negative_frame::detect(&oriented, o.ratio) };
     // measured on the picture itself (inside its edge, never the holes or the rebate)
     let picture = |f: &Frame| Frame { holes: [None, None], ..*f }.crop(Margin::Inside, ow, oh);
     if o.film == Film::Slide {
@@ -147,6 +150,8 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
 fn crop_of(frame: &Frame, dims: (f64, f64), o: Options, analysed: (f64, f64)) -> Result<CropGeometry, String> {
     let (w, h) = dims;
     let cut = match o.sprockets {
+        // the whole strip: to the film's edges, the holes in it
+        _ if o.strip => Frame { picture: frame.film, holes: [None, None], ..*frame },
         Sprockets::Keep => *frame,
         Sprockets::Remove => Frame { holes: [None, None], ..*frame },
     };
