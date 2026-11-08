@@ -124,7 +124,7 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
     s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
     let id = s.active().unwrap();
     let before = s.develop_of(id).unwrap();
-    let r = s.execute("develop.negativeZap", &json!({"margin": "edge", "format": "35mm"})).unwrap();
+    let r = s.execute("develop.negativeZap", &json!({"margin": "edge", "format": "35mm", "sprockets": "keep"})).unwrap();
     let d = s.develop_of(id).unwrap();
     let g = d.crop.geometry;
     assert!((g.angle - 1.5).abs() < 0.25, "{r}");
@@ -152,9 +152,40 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
 }
 
 #[test]
+fn zap_removes_the_sprocket_holes_unless_told_to_keep_them_and_only_crops_a_slide() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-holes-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = negative_scan(&dir, 0.0);
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let id = s.active().unwrap();
+    let before = s.develop_of(id).unwrap();
+    // by default the crop ends at the picture, the holes and the rebate beside them left out
+    s.execute("develop.negativeZap", &json!({"margin": "edge"})).unwrap();
+    let g = s.develop_of(id).unwrap().crop.geometry.rect;
+    assert!((g.y0 - 80.0 / 600.0).abs() < 0.015 && (g.y1 - 520.0 / 600.0).abs() < 0.015, "{g:?}");
+    s.execute("edit.undo", &json!({})).unwrap();
+    // a slide: the same crop, and no conversion
+    s.execute("develop.negativeZap", &json!({"margin": "edge", "film": "slide"})).unwrap();
+    let d = s.develop_of(id).unwrap();
+    assert!((d.crop.geometry.rect.y0 - g.y0).abs() < 1e-9 && (d.crop.geometry.rect.x0 - g.x0).abs() < 1e-9, "{:?}", d.crop.geometry);
+    assert_eq!(d.negative.enabled, before.negative.enabled);
+    assert_eq!((d.negative.base, d.negative.measured.is_some()), (before.negative.base, before.negative.measured.is_some()));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn zap_rejects_bad_arguments_and_photos_without_a_frame() {
     let mut s = Session::with_demo();
-    for p in [json!({"margin": "wide"}), json!({"margin": 3}), json!({"format": "8x10"}), json!({"format": true})] {
+    let bad = [
+        json!({"margin": "wide"}),
+        json!({"margin": 3}),
+        json!({"format": "8x10"}),
+        json!({"format": true}),
+        json!({"sprockets": "cut"}),
+        json!({"film": "print"}),
+    ];
+    for p in bad {
         assert!(s.execute("develop.negativeZap", &p).is_err(), "{p}");
     }
     // a demo photo is no negative in a holder: an error, nothing changed
@@ -288,7 +319,9 @@ fn zap_on_real_scans() {
         let format = std::env::var("LC_ZAP_FORMAT").unwrap_or_else(|_| "auto".into());
         let ratio = lightcraft_pipeline::negative_frame::format_ratio(&format).unwrap();
         let frame = lightcraft_pipeline::negative_frame::detect(&src, ratio);
-        let r = s.execute("develop.negativeZap", &json!({"ids": [id.0], "format": format}));
+        let sprockets = std::env::var("LC_ZAP_SPROCKETS").unwrap_or_else(|_| "remove".into());
+        let film = std::env::var("LC_ZAP_FILM").unwrap_or_else(|_| "negative".into());
+        let r = s.execute("develop.negativeZap", &json!({"ids": [id.0], "format": format, "sprockets": sprockets, "film": film}));
         println!("{name}: {frame:?}\n    -> {}", r.as_ref().map(|v| v["zap"].to_string()).unwrap_or_else(|e| e.to_string()));
         // the scan with the film and the picture drawn on it, in the turned frame's coordinates
         if let Ok(f) = frame {
@@ -319,7 +352,7 @@ fn zap_on_real_scans() {
             // nothing found: the plain scan, to see why
             write_ppm(&out.join(format!("{name}-frame.ppm")), &src.to_srgb8());
         }
-        if r.is_ok() {
+        if r.is_ok() && std::env::var_os("LC_ZAP_NO_RENDER").is_none() {
             let rendered = s.render_now(id, 900, 900).unwrap();
             write_ppm(&out.join(format!("{name}-zap.ppm")), &rendered.image);
         }

@@ -87,11 +87,10 @@ fn negative_png(path: &std::path::Path) {
     std::fs::write(path, png).unwrap();
 }
 
-/// Zap!'s crop of the test scan (`want` its picture): the ends on the picture, the long sides by the
-/// sprocket holes (just below the cut ones at the top, 24..52 with the holder from 40; the whole
-/// ones at the bottom, 528..556, kept).
+/// Zap!'s crop of the test scan (`want` its picture) with the sprocket holes removed: on the
+/// picture all round.
 fn on_frame(g: lightcraft_geom::Rect, want: [f64; 4]) -> bool {
-    (g.x0 - want[0]).abs() < 0.015 && (g.x1 - want[2]).abs() < 0.015 && g.y0 > 52.0 / 600.0 && g.y0 < want[1] && g.y1 > 556.0 / 600.0 - 0.01
+    [(g.x0, want[0]), (g.y0, want[1]), (g.x1, want[2]), (g.y1, want[3])].iter().all(|(a, b)| (a - b).abs() < 0.015)
 }
 
 #[test]

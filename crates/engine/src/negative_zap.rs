@@ -17,12 +17,41 @@ use crate::media::{SourceLevel, SourceRef};
 /// The label of Zap!'s undo step and History entries.
 pub const LABEL: &str = "Zap";
 
-/// Where the crop sits and the film format, the same for every photo of a run.
+/// Whether the crop keeps 35 mm film's sprocket holes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Sprockets {
+    /// The crop ends at the picture; the holes stay out.
+    #[default]
+    Remove,
+    /// The long sides go to the holes (just outside whole ones, just inside ones the holder cuts).
+    Keep,
+}
+
+/// What was scanned.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Film {
+    /// A negative: cropped, and converted with the base from its rebate.
+    #[default]
+    Negative,
+    /// A slide (a positive): only cropped, never converted.
+    Slide,
+}
+
+/// Where the crop sits, the film format, the sprocket holes and the kind of film, the same for
+/// every photo of a run.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Options {
     pub margin: Margin,
     /// The picture's long / short side, `None` for no format assumed.
     pub ratio: Option<f64>,
+    pub sprockets: Sprockets,
+    pub film: Film,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative }
+    }
 }
 
 impl Options {
@@ -38,7 +67,19 @@ impl Options {
             Some(Value::String(f)) => negative_frame::format_ratio(f)?,
             Some(v) => return Err(format!("`format` must be a film format id, not {v}")),
         };
-        Ok(Self { margin, ratio })
+        let sprockets = match p.get("sprockets") {
+            None | Some(Value::Null) => Sprockets::Remove,
+            Some(Value::String(v)) if v == "remove" => Sprockets::Remove,
+            Some(Value::String(v)) if v == "keep" => Sprockets::Keep,
+            Some(v) => return Err(format!("`sprockets` must be remove or keep, not {v}")),
+        };
+        let film = match p.get("film") {
+            None | Some(Value::Null) => Film::Negative,
+            Some(Value::String(v)) if v == "negative" => Film::Negative,
+            Some(Value::String(v)) if v == "slide" => Film::Slide,
+            Some(v) => return Err(format!("`film` must be negative or slide, not {v}")),
+        };
+        Ok(Self { margin, ratio, sprockets, film })
     }
 }
 
@@ -73,13 +114,17 @@ pub fn own_crop(d: &DevelopSettings) -> bool {
 
 /// Zap! on `scan` (the photo's source, before orientation) of a photo with settings `before` and
 /// oriented size `dims`. A crop of the user's own ([`own_crop`]) stays as it is: Zap! then only
-/// takes the film base and measures the picture (inside that crop when no frame is found).
+/// takes the film base and measures the picture (inside that crop when no frame is found). A
+/// slide is only cropped.
 pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options) -> Result<Zapped, String> {
     let oriented = scan.oriented(before.orientation);
     let (ow, oh) = (oriented.width as f64, oriented.height as f64);
     let found = negative_frame::detect(&oriented, o.ratio);
     // measured on the picture itself (inside its edge, never the holes or the rebate)
     let picture = |f: &Frame| Frame { holes: [None, None], ..*f }.crop(Margin::Inside, ow, oh);
+    if o.film == Film::Slide {
+        return slide(before, found, dims, o, (ow, oh));
+    }
     if own_crop(before) {
         let geometry = before.crop.geometry;
         let (measured, frame) = match &found {
@@ -90,15 +135,39 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
         return Ok(Zapped { settings, report: report(&geometry, frame, true) });
     }
     let frame = found?;
+    let geometry = crop_of(&frame, dims, o, (ow, oh))?;
+    let measured = measure_in(&oriented, picture(&frame), 0.0)?;
+    let mut settings = converted(before, measured, frame.base);
+    settings.crop.geometry = geometry;
+    settings.negative.zap_crop = Some(geometry);
+    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false) })
+}
+
+/// The crop Zap! sets for `frame` on a scan of oriented size `dims` (analysed at `analysed`).
+fn crop_of(frame: &Frame, dims: (f64, f64), o: Options, analysed: (f64, f64)) -> Result<CropGeometry, String> {
     let (w, h) = dims;
-    let rect = frame.crop(o.margin, ow, oh);
+    let cut = match o.sprockets {
+        Sprockets::Keep => *frame,
+        Sprockets::Remove => Frame { holes: [None, None], ..*frame },
+    };
+    let rect = cut.crop(o.margin, analysed.0, analysed.1);
     let geometry = CropGeometry { rect, angle: frame.angle }.constrained(w, h);
     let min = MIN_CROP_FRACTION * w.min(h);
     if geometry.rect.width() * w < min || geometry.rect.height() * h < min {
         return Err("no film frame found".into());
     }
-    let measured = measure_in(&oriented, picture(&frame), 0.0)?;
-    let mut settings = converted(before, measured, frame.base);
+    Ok(geometry)
+}
+
+/// Zap! on a slide: only the crop, the conversion left as it is. A crop of the user's own stays.
+fn slide(before: &DevelopSettings, found: Result<Frame, String>, dims: (f64, f64), o: Options, analysed: (f64, f64)) -> Result<Zapped, String> {
+    if own_crop(before) {
+        let geometry = before.crop.geometry;
+        return Ok(Zapped { settings: before.clone(), report: report(&geometry, found.as_ref().ok(), true) });
+    }
+    let frame = found?;
+    let geometry = crop_of(&frame, dims, o, analysed)?;
+    let mut settings = before.clone();
     settings.crop.geometry = geometry;
     settings.negative.zap_crop = Some(geometry);
     Ok(Zapped { settings, report: report(&geometry, Some(&frame), false) })
