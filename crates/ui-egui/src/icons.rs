@@ -106,6 +106,9 @@ pub enum Icon {
     Sun,
     /// Appearance Mode ▸ Dark: a crescent moon.
     Moon,
+    /// Convert Negative: a frame of film with sprocket holes along the top and the bottom, its
+    /// picture half filled (dark and light swapped).
+    FilmNegative,
 }
 
 struct Pen<'a> {
@@ -411,6 +414,15 @@ fn paint_with(p: &Painter, rect: Rect, icon: Icon, color: Color32, turn: Option<
                 pen.line(&[(10.0 + 5.2 * a.cos(), 10.0 + 5.2 * a.sin()), (10.0 + 7.5 * a.cos(), 10.0 + 7.5 * a.sin())]);
             }
             pen.circle(10.0, 10.0, 5.2);
+        }
+        FilmNegative => {
+            pen.rect(2.5, 3.5, 17.5, 16.5, 1.0);
+            for x in [4.5, 8.0, 11.5, 15.0] {
+                pen.rect_fill(x - 0.9, 4.9, x + 0.9, 6.3, 0.3);
+                pen.rect_fill(x - 0.9, 13.7, x + 0.9, 15.1, 0.3);
+            }
+            pen.rect(4.5, 8.0, 15.5, 12.0, 0.5);
+            pen.rect_fill(4.5, 8.0, 10.0, 12.0, 0.3);
         }
         Filmstrip => {
             pen.rect(2.5, 5.0, 17.5, 15.0, 1.0);

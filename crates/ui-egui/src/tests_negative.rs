@@ -135,6 +135,21 @@ fn zap_crops_to_the_frame_with_the_panels_choices_and_undoes_in_one_step() {
 }
 
 #[test]
+fn the_tool_strip_opens_convert_negative() {
+    let mut h = Headless::new(
+        LightcraftApp::new(lightcraft_engine::Session::with_demo(), Services { png: None, ..Default::default() }),
+        [1400.0, 900.0],
+        1.0,
+    );
+    h.settle(SETTLE);
+    let r = h.request("ui.clickWidget", json!({"id": "icon:negative"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    assert_eq!(h.app.ui.right, crate::state::RightPanel::Negative);
+    assert!(h.app.widgets.iter().any(|(id, _)| id == "button:negative-zap"), "the panel with Zap!");
+}
+
+#[test]
 fn photo_zap_asks_for_its_choices_and_runs_with_them() {
     let dir = std::env::temp_dir().join(format!("lc-ui-zap-dialog-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
