@@ -65,6 +65,12 @@ const SEARCH: f64 = 0.3;
 const STEP: f32 = 0.5;
 /// Rebate is at most this far from the base; more, and the picture reaches the film's edge.
 const REBATE_MAX: f32 = 0.6;
+/// A normal film's picture lies this far from the base in its brighter tenth (q90 of the distance
+/// in the film's middle). A flatter film scales [`STEP`] and [`REBATE_MAX`] down with it, so a
+/// weak picture edge still counts.
+const CONTRAST_REF: f32 = 2.5;
+/// The least the steps scale to, so the film's grain never passes for a picture edge.
+const CONTRAST_MIN: f32 = 0.3;
 /// Smallest log step a pixel pair counts for a gate edge.
 const EDGE_LOG_STEP: f32 = 0.02;
 /// The fewest whole holes a line along a row of sprocket holes crosses.
@@ -243,7 +249,8 @@ pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
     // the film runs along the sprocket holes, else along the film's longer side
     let along_x = film.width() >= film.height();
     let gaps = frame_gaps(&lum, &turned, film, &holes, threshold, &light);
-    let scan = Scan { dist: &dist, lum: &lum, img: &turned, light: &light, threshold, film, gaps: &gaps, along_x };
+    let contrast = film_contrast(&dist, film);
+    let scan = Scan { dist: &dist, lum: &lum, img: &turned, light: &light, threshold, contrast, film, gaps: &gaps, along_x };
     let cands = Side::ALL.map(|side| scan.candidates(side));
     let ratio = ratio.filter(|r| r.is_finite() && *r > 0.0).map(|r| if along_x { r } else { 1.0 / r });
     let (picture, sides_found) = choose(&cands, film, ratio).ok_or("no film frame found")?;
@@ -970,6 +977,9 @@ struct Scan<'a> {
     img: &'a Rgb32f,
     light: &'a Light,
     threshold: f32,
+    /// The film's contrast against the base, relative to a normal film's (at most 1): the picture
+    /// steps scale with it.
+    contrast: f32,
     film: Px,
     /// The gaps between frames along the film ([`frame_gaps`]).
     gaps: &'a [(usize, usize)],
@@ -1055,7 +1065,7 @@ impl Scan<'_> {
         let skip = (reach / 40).max(2);
         let gaps = self.gap_cands(side, reach);
         let Some(rebate) = median(profile.iter().skip(skip).take(skip * 2).copied().collect()) else { return gaps };
-        if rebate > REBATE_MAX {
+        if rebate > REBATE_MAX * self.contrast {
             // the picture (or something that isn't rebate) reaches the film's edge, unless a gap
             // between frames ends a neighbour's piece here
             let mut out = vec![Cand { depth: 0, cost: 0.0, gap: false }];
@@ -1064,7 +1074,7 @@ impl Scan<'_> {
         }
         let shares = self.shares(side, start, &lines, reach);
         let mut out = Vec::new();
-        if let Some(i) = colour_step(&profile, rebate, skip) {
+        if let Some(i) = colour_step(&profile, rebate, skip, STEP * self.contrast) {
             // the sharpest step just before the profile left the base
             let from = i.saturating_sub(reach / 10).max(skip);
             let best = (from..=i).max_by(|a, b| share_at(&shares, *a).total_cmp(&share_at(&shares, *b)));
@@ -1101,10 +1111,21 @@ fn share_at(shares: &[f32], i: usize) -> f32 {
     shares.get(i).copied().unwrap_or(0.0)
 }
 
-/// The first place the profile stays above the rebate by [`STEP`] for a few samples.
-fn colour_step(profile: &[f32], rebate: f32, skip: usize) -> Option<usize> {
+/// How strong the film's picture is against the base, relative to a normal film's: the q90 of the
+/// distance in the middle three fifths of the film over [`CONTRAST_REF`], between [`CONTRAST_MIN`]
+/// and 1.
+fn film_contrast(dist: &Plane, film: Px) -> f32 {
+    let (w, h) = (film.width() / 5, film.height() / 5);
+    let inner = Px { x0: film.x0 + w, y0: film.y0 + h, x1: film.x1.saturating_sub(w), y1: film.y1.saturating_sub(h) };
+    let v: Vec<f32> = (inner.y0..inner.y1).flat_map(|y| (inner.x0..inner.x1).filter_map(move |x| px(dist, x, y))).filter(|d| d.is_finite()).collect();
+    let spread = quantile(v, 0.9).unwrap_or(CONTRAST_REF);
+    (spread / CONTRAST_REF).clamp(CONTRAST_MIN, 1.0)
+}
+
+/// The first place the profile stays above the rebate by `step` for a few samples.
+fn colour_step(profile: &[f32], rebate: f32, skip: usize, step: f32) -> Option<usize> {
     let run = 3;
-    let above = |v: &f32| v.is_finite() && *v > rebate + STEP;
+    let above = |v: &f32| v.is_finite() && *v > rebate + step;
     (skip..profile.len().saturating_sub(run)).find(|i| profile.get(*i..i + run).is_some_and(|s| s.iter().all(above)))
 }
 
@@ -1614,5 +1635,22 @@ mod tests {
         });
         let f = detect(&s, None).unwrap();
         assert!((f.picture.x0 - 120.0 / 900.0).abs() < 0.012 && (f.picture.x1 - 780.0 / 900.0).abs() < 0.012, "{f:?}");
+    }
+
+    /// A flat film (thin, low in contrast): the picture is barely denser than the base, and
+    /// thinnest along its edges (a pale sky and foreground). The weak steps still end it, as they
+    /// would on a normal film.
+    #[test]
+    fn a_flat_film_s_weak_picture_edges_are_found() {
+        let pic = [120.0, 80.0, 780.0, 560.0];
+        let s = film_scan((40.0, 600.0), |x, y| {
+            let inside = (pic[0]..pic[2]).contains(&x) && (pic[1]..pic[3]).contains(&y);
+            let edge = (x - pic[0]).min(pic[2] - x).min(y - pic[1]).min(pic[3] - y);
+            inside.then(|| if edge < 40.0 { 0.88 } else { 0.72 + 0.1 * ((x / 37.0).sin() * (y / 23.0).cos()).abs() })
+        });
+        let f = detect(&s, None).unwrap();
+        let want = [pic[0] / 900.0, pic[1] / 640.0, pic[2] / 900.0, pic[3] / 640.0];
+        let got = [f.picture.x0, f.picture.y0, f.picture.x1, f.picture.y1];
+        assert!(got.iter().zip(want).all(|(a, b)| (a - b).abs() < 0.012), "{f:?}");
     }
 }
