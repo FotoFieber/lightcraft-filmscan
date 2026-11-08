@@ -46,13 +46,11 @@ pub struct Options {
     pub ratio: Option<f64>,
     pub sprockets: Sprockets,
     pub film: Film,
-    /// The picture is the whole film strip ([`negative_frame::STRIP_FORMAT`]).
-    pub strip: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative, strip: false }
+        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative }
     }
 }
 
@@ -61,8 +59,8 @@ impl Options {
     pub fn from_params(p: &Value) -> Result<Self, String> {
         let margin = match p.get("margin") {
             None | Some(Value::Null) => Margin::Inside,
-            Some(Value::String(m)) => Margin::parse(m).ok_or_else(|| format!("unknown margin `{m}` (inside, edge or border)"))?,
-            Some(v) => return Err(format!("`margin` must be inside, edge or border, not {v}")),
+            Some(Value::String(m)) => Margin::parse(m).ok_or_else(|| format!("unknown margin `{m}` (inside, edge, border or film)"))?,
+            Some(v) => return Err(format!("`margin` must be inside, edge, border or film, not {v}")),
         };
         let ratio = match p.get("format") {
             None | Some(Value::Null) => None,
@@ -81,8 +79,7 @@ impl Options {
             Some(Value::String(v)) if v == "slide" => Film::Slide,
             Some(v) => return Err(format!("`film` must be negative or slide, not {v}")),
         };
-        let strip = p.get("format").and_then(Value::as_str) == Some(negative_frame::STRIP_FORMAT);
-        Ok(Self { margin, ratio, sprockets, film, strip })
+        Ok(Self { margin, ratio, sprockets, film })
     }
 }
 
@@ -123,7 +120,7 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
     let oriented = scan.oriented(before.orientation);
     let (ow, oh) = (oriented.width as f64, oriented.height as f64);
     let found = match o.film {
-        _ if o.strip => negative_frame::detect_strip(&oriented),
+        _ if o.margin == Margin::Film => negative_frame::detect_strip(&oriented),
         Film::Slide => negative_frame::detect_slide(&oriented, o.ratio),
         Film::Negative => negative_frame::detect(&oriented, o.ratio),
     };
@@ -154,8 +151,6 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
 fn crop_of(frame: &Frame, dims: (f64, f64), o: Options, analysed: (f64, f64)) -> Result<CropGeometry, String> {
     let (w, h) = dims;
     let cut = match o.sprockets {
-        // the whole strip: to the film's edges, the holes in it
-        _ if o.strip => Frame { picture: frame.film, holes: [None, None], ..*frame },
         Sprockets::Keep => *frame,
         Sprockets::Remove => Frame { holes: [None, None], ..*frame },
     };

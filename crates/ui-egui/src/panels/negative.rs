@@ -44,7 +44,8 @@ const TONES: [(&str, &str); 13] = [
 ];
 const LOOKS: [(&str, &str); 5] = [("neutral", "Neutral"), ("lab_warm", "Lab Warm"), ("lab_cool", "Lab Cool"), ("print", "Print"), ("clean", "Clean")];
 /// Where Zap! puts the crop: on the picture, a little inside it, or with a little rebate.
-pub(crate) const MARGINS: [(&str, &str); 3] = [("inside", "Inside the Frame"), ("edge", "To the Edge"), ("border", "With Border")];
+pub(crate) const MARGINS: [(&str, &str); 4] =
+    [("inside", "Inside the Frame"), ("edge", "To the Edge"), ("border", "With Border"), ("film", "Whole Film")];
 /// Zap!'s choice of the sprocket holes, as `develop.negativeZap` takes it.
 pub(crate) const SPROCKETS: [(&str, &str); 2] = [("remove", "Remove Sprocket Holes"), ("keep", "Keep Sprocket Holes")];
 /// What was scanned, as `develop.negativeZap` takes it.

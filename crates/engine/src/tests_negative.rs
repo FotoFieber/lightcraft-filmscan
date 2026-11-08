@@ -152,7 +152,7 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
 }
 
 #[test]
-fn zap_removes_the_sprocket_holes_and_crops_a_panorama_to_the_whole_strip() {
+fn zap_removes_the_sprocket_holes_or_crops_to_the_whole_film() {
     let dir = std::env::temp_dir().join(format!("lc-zap-holes-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = negative_scan(&dir, 0.0);
@@ -164,8 +164,8 @@ fn zap_removes_the_sprocket_holes_and_crops_a_panorama_to_the_whole_strip() {
     let g = s.develop_of(id).unwrap().crop.geometry.rect;
     assert!((g.y0 - 80.0 / 600.0).abs() < 0.015 && (g.y1 - 520.0 / 600.0).abs() < 0.015, "{g:?}");
     s.execute("edit.undo", &json!({})).unwrap();
-    // a picture that fills the strip: the crop is the film inside the holder, holes and all
-    s.execute("develop.negativeZap", &json!({"margin": "edge", "format": "135pano"})).unwrap();
+    // the whole film: the crop is the film inside the holder, rebate and holes and all
+    s.execute("develop.negativeZap", &json!({"margin": "film"})).unwrap();
     let g = s.develop_of(id).unwrap().crop.geometry.rect;
     let film = [60.0 / 900.0, 40.0 / 600.0, 840.0 / 900.0, 560.0 / 600.0];
     assert!([g.x0, g.y0, g.x1, g.y1].iter().zip(film).all(|(a, b)| (a - b).abs() < 0.012), "{g:?}");
@@ -361,7 +361,8 @@ fn zap_on_real_scans() {
         let frame = lightcraft_pipeline::negative_frame::detect(&src, ratio);
         let sprockets = std::env::var("LC_ZAP_SPROCKETS").unwrap_or_else(|_| "remove".into());
         let film = std::env::var("LC_ZAP_FILM").unwrap_or_else(|_| "negative".into());
-        let r = s.execute("develop.negativeZap", &json!({"ids": [id.0], "format": format, "sprockets": sprockets, "film": film}));
+        let margin = std::env::var("LC_ZAP_MARGIN").unwrap_or_else(|_| "inside".into());
+        let r = s.execute("develop.negativeZap", &json!({"ids": [id.0], "format": format, "sprockets": sprockets, "film": film, "margin": margin}));
         println!("{name}: {frame:?}\n    -> {}", r.as_ref().map(|v| v["zap"].to_string()).unwrap_or_else(|e| e.to_string()));
         // the scan with the film and the picture drawn on it, in the turned frame's coordinates
         if let Ok(f) = frame {

@@ -247,7 +247,7 @@ pub struct UiState {
     #[serde(skip)]
     pub grading_hidden: Option<(lightcraft_catalog::PhotoId, [bool; 3])>,
     /// Convert Negative's Zap!: where the crop sits on the picture's edge ("inside" | "edge" |
-    /// "border"), the film format that places a side the scan doesn't show
+    /// "border", or "film": the whole film), the film format that places a side the scan doesn't show
     /// (`lightcraft_pipeline::negative_frame::FORMATS`), whether the crop keeps 35 mm's sprocket
     /// holes ("remove" | "keep") and what was scanned ("negative" | "slide").
     pub negative_zap_margin: String,

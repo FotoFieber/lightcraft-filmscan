@@ -34,8 +34,8 @@
 //!    inside holes the holder cuts (they go; the rebate with the edge print stays). Holes are far
 //!    surer to find than a picture's edge.
 //!
-//! [`detect_strip`] is for a picture that fills the film strip (35 mm across a medium-format
-//! camera's gate): steps 1–3 and 8 only, the strip itself taken as the picture. [`detect_slide`]
+//! [`detect_strip`] is for a crop of the whole film ([`Margin::Film`]: sprocket holes, rebate and
+//! all, as for 35 mm across a medium-format camera's gate): steps 1–3 and 8 only. [`detect_slide`]
 //! is for a slide (a positive), whose rebate is dark: the picture by its straight edges against
 //! the rebate, a side that doesn't show placed about the middle between the rows of holes.
 //!
@@ -52,8 +52,8 @@ pub const ANALYSIS_EDGE: usize = 1000;
 pub const MAX_ANGLE: f64 = 10.0;
 /// Film is brighter than this fraction of the scan's highlights; the holder is darker.
 const FILM_FRACTION: f32 = 0.08;
-/// The same for a picture that fills the strip ([`detect_strip`]): dense film (a dark sky, dark
-/// water) reaches the holes' edge there, and the light through the holes sets the highlights.
+/// The same for the whole film ([`detect_strip`]): dense film (a dark sky, dark water) may reach
+/// the holes' edge there, and the light through the holes sets the highlights.
 const STRIP_FILM_FRACTION: f32 = 0.02;
 /// Width of the bands the first base guess reads, as a fraction of the shorter side.
 const BAND: f64 = 0.03;
@@ -112,6 +112,8 @@ pub enum Margin {
     Edge,
     /// A little rebate around the picture (2 % of the shorter side, within the film).
     Border,
+    /// The whole film inside the holder: rebate, sprocket holes and all ([`detect_strip`]).
+    Film,
 }
 
 impl Margin {
@@ -120,6 +122,7 @@ impl Margin {
             "inside" => Some(Margin::Inside),
             "edge" => Some(Margin::Edge),
             "border" => Some(Margin::Border),
+            "film" => Some(Margin::Film),
             _ => None,
         }
     }
@@ -129,14 +132,14 @@ impl Margin {
             Margin::Inside => -0.01,
             Margin::Edge => 0.0,
             Margin::Border => 0.02,
+            Margin::Film => 0.0,
         }
     }
 }
 
 /// Film formats a frame can be placed by: id, label, and the picture's length along the film over
-/// its height across it. "auto" assumes none; [`STRIP_FORMAT`] has none either: its picture is the
-/// whole strip ([`detect_strip`]).
-pub const FORMATS: [(&str, &str, Option<f64>); 12] = [
+/// its height across it. "auto" assumes none.
+pub const FORMATS: [(&str, &str, Option<f64>); 11] = [
     ("auto", "Auto", None),
     ("35mm", "35 mm (3:2)", Some(36.0 / 24.0)),
     ("half", "Half Frame", Some(18.0 / 24.0)),
@@ -148,12 +151,7 @@ pub const FORMATS: [(&str, &str, Option<f64>); 12] = [
     ("69", "6×9", Some(84.0 / 56.0)),
     ("612", "6×12", Some(118.0 / 56.0)),
     ("617", "6×17", Some(168.0 / 56.0)),
-    (STRIP_FORMAT, "35 mm Panorama (Sprockets)", None),
 ];
-
-/// 35 mm film across a medium-format camera's gate: the picture fills the strip, sprocket holes and
-/// all.
-pub const STRIP_FORMAT: &str = "135pano";
 
 /// The along-the-film aspect of format `id` (`None` for auto); `Err` for an unknown id.
 pub fn format_ratio(id: &str) -> Result<Option<f64>, String> {
@@ -201,6 +199,9 @@ impl Frame {
     /// side with sprocket holes is cut by them instead: just outside whole holes (they show), just
     /// inside holes the holder cuts (they don't; the rebate with the edge print does).
     pub fn crop(&self, margin: Margin, w: f64, h: f64) -> Rect {
+        if margin == Margin::Film {
+            return self.film;
+        }
         let (w, h) = (w.max(1.0), h.max(1.0));
         let m = margin.offset() * w.min(h);
         let (mx, my) = (m / w, m / h);
@@ -257,10 +258,10 @@ pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
     Ok(Frame { angle, picture: norm(picture), film: norm(film), base, sprockets: holes.iter().any(Option::is_some), sides_found, along_x, holes })
 }
 
-/// The film strip on `src`, for a picture that fills it, sprocket holes and all (35 mm across a
-/// medium-format camera's gate): the straighten angle, the film inside the holder as the picture
-/// (the strip's ends taken as the picture's, its long sides between the holes' inner edges where
-/// they show, as the part a measurement reads) and the base from the rebate beside the holes.
+/// The film strip on `src`, for a crop of the whole film (a picture that fills it, sprocket holes
+/// and all, as 35 mm across a medium-format camera's gate): the straighten angle, the film inside
+/// the holder, as the picture the film's ends and between the holes' inner edges where they show
+/// (the part a measurement reads), and the base from the rebate beside the holes.
 pub fn detect_strip(src: &Rgb32f) -> Result<Frame, String> {
     let Strip { angle, turned, threshold, film, guess: _, light, holes } = strip(src, STRIP_FILM_FRACTION)?;
     let (w, h) = (turned.width, turned.height);
@@ -1415,7 +1416,7 @@ mod tests {
         assert!(f.along_x && f.holes.iter().all(Option::is_some), "{f:?}");
         assert!((f.picture.y0 * 600.0 - 84.0).abs() < 6.0 && (f.picture.y1 * 600.0 - 516.0).abs() < 6.0, "between the holes: {f:?}");
         assert!((f.picture.x0 - f.film.x0).abs() < 1e-9 && (f.picture.x1 - f.film.x1).abs() < 1e-9, "{f:?}");
-        assert_eq!(format_ratio(STRIP_FORMAT), Ok(None));
+        assert_eq!(f.crop(Margin::Film, W as f64, H as f64), f.film);
     }
 
     /// A slide (a positive) on a 900 × 600 scan, in Rec.2020: the film across the whole width on
