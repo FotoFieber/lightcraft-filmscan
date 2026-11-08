@@ -1,5 +1,5 @@
-//! Zap! from the app: the panel's button and Photo ▸ Zap! run `develop.negativeZap` with the
-//! panel's margin and format. One photo runs at once; a selection reads and analyses its scans off
+//! Zap! from the app: the panel's button and Photo ▸ Zap!… run `develop.negativeZap` with the
+//! panel's (or the dialog's) margin, format, sprocket holes and film. One photo runs at once; a selection reads and analyses its scans off
 //! the UI thread, listed in the activity stack, and commits them as one undo step.
 use crate::LightcraftApp;
 use lightcraft_catalog::{Op, PhotoId};
@@ -32,6 +32,8 @@ fn with_panel_choices(app: &LightcraftApp, p: &Value) -> Value {
     if let Some(o) = p.as_object_mut() {
         o.entry("margin").or_insert_with(|| json!(app.ui.negative_zap_margin));
         o.entry("format").or_insert_with(|| json!(app.ui.negative_zap_format));
+        o.entry("sprockets").or_insert_with(|| json!(app.ui.negative_zap_sprockets));
+        o.entry("film").or_insert_with(|| json!(app.ui.negative_zap_film));
     }
     p
 }

@@ -106,7 +106,13 @@ fn zap_crops_to_the_frame_with_the_panels_choices_and_undoes_in_one_step() {
     let r = h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
     assert_eq!(r["ok"], true, "{r}");
     h.settle(SETTLE);
-    for w in ["button:negative-zap", "dropdown:negative-zapMargin", "dropdown:negative-zapFormat"] {
+    for w in [
+        "button:negative-zap",
+        "dropdown:negative-zapMargin",
+        "dropdown:negative-zapFormat",
+        "dropdown:negative-zapSprockets",
+        "dropdown:negative-zapFilm",
+    ] {
         assert!(h.app.widgets.iter().any(|(id, _)| id == w), "{w} on the panel");
     }
     let id = h.app.session.active().unwrap();
@@ -125,6 +131,47 @@ fn zap_crops_to_the_frame_with_the_panels_choices_and_undoes_in_one_step() {
     h.request("engine.execute", json!({"command": "edit.undo"}), T);
     h.settle(SETTLE);
     assert_eq!(h.app.session.develop_of(id).unwrap().crop, before.crop);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn photo_zap_asks_for_its_choices_and_runs_with_them() {
+    let dir = std::env::temp_dir().join(format!("lc-ui-zap-dialog-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("negative.png");
+    negative_png(&path);
+    let mut session = lightcraft_engine::Session::new().with_fs();
+    session.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let app = LightcraftApp::new(session, Services { png: None, ..Default::default() });
+    let mut h = Headless::new(app, [1400.0, 900.0], 1.0);
+    let id = h.app.session.active().unwrap();
+    let before = h.app.session.develop_of(id).unwrap();
+    h.app.ui.negative_zap_format = "35mm".into();
+    // Photo ▸ Zap!… opens the dialog with the last choices, and changes nothing yet
+    let r = h.request("ui.menu.invoke", json!({"command": "dialog.negativeZap"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    let Some(crate::state::Dialog::NegativeZap { film, format, sprockets, margin }) = h.app.ui.dialog.as_mut() else {
+        panic!("the Zap! dialog: {:?}", h.app.ui.dialog)
+    };
+    assert_eq!((film.as_str(), format.as_str(), sprockets.as_str(), margin.as_str()), ("negative", "35mm", "remove", "inside"));
+    for w in ["dropdown:negativeZap-film", "dropdown:negativeZap-format", "dropdown:negativeZap-sprockets", "dropdown:negativeZap-margin"] {
+        assert!(h.app.widgets.iter().any(|(id, _)| id == w), "{w} in the dialog");
+    }
+    assert_eq!(h.app.session.develop_of(id).unwrap(), before);
+    // a slide with the holes kept: only cropped, to the holes
+    *film = "slide".into();
+    *sprockets = "keep".into();
+    *margin = "edge".into();
+    let r = h.request("ui.dialog.confirm", json!({}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    let d = h.app.session.develop_of(id).unwrap();
+    let g = d.crop.geometry.rect;
+    assert!(g.y1 > 556.0 / 600.0 - 0.01 && (g.x0 - 120.0 / 900.0).abs() < 0.015, "the whole holes kept: {g:?} toast {:?}", h.app.ui.toast);
+    assert!(!d.negative.enabled, "a slide is not converted");
+    // the next Zap! starts from them
+    assert_eq!((h.app.ui.negative_zap_film.as_str(), h.app.ui.negative_zap_sprockets.as_str()), ("slide", "keep"));
     std::fs::remove_dir_all(&dir).ok();
 }
 

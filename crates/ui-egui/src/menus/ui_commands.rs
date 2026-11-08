@@ -285,6 +285,8 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("dialog.captureTime", "Edit Capture Time…", None, "Photo"),
     // the active photo is a film negative: switch the conversion on and open its panel
     ("photo.convertNegative", "Convert Negative", None, "Photo"),
+    // Zap! on the selection, with its choices asked first
+    ("dialog.negativeZap", "Zap!…", None, "Photo"),
     ("photo.tagFromTracklog", "Auto-Tag from Tracklog…", None, "Photo"),
     ("app.exportPrevious", "Export with Previous", Some("Cmd+Alt+Shift+E"), "File"),
 ];

@@ -1184,6 +1184,16 @@ fn ui_commands_9(app: &mut LightcraftApp, _ctx: &egui::Context, id: &str, p: &Va
             app.ui.dialog = Some(Dialog::LabelNames { names, save_as: String::new() });
             Ok(Value::Null)
         }
+        "dialog.negativeZap" => {
+            let ui = &app.ui;
+            app.ui.dialog = Some(Dialog::NegativeZap {
+                film: ui.negative_zap_film.clone(),
+                format: ui.negative_zap_format.clone(),
+                sprockets: ui.negative_zap_sprockets.clone(),
+                margin: ui.negative_zap_margin.clone(),
+            });
+            Ok(Value::Null)
+        }
         "dialog.rename" => {
             let template = p.get("template").and_then(Value::as_str).unwrap_or("{name}").to_string();
             app.ui.dialog = Some(Dialog::Rename { template, start: p.get("start").and_then(Value::as_u64).unwrap_or(1) as u32 });

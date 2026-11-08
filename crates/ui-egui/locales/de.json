@@ -3557,5 +3557,12 @@
   "Zap! cancelled": "Zap! abgebrochen",
   "convert negative|Fade": "Verblassen",
   "convert negative|Print": "Abzug",
-  "Find the frame on the scan, straighten and crop to it (35 mm: by the sprocket holes) and pick the film base. A crop of your own stays": "Bild auf dem Scan finden, gerade ausrichten, zuschneiden (Kleinbild: an der Perforation) und die Filmbasis wählen. Ein eigener Zuschnitt bleibt erhalten"
+  "Find the frame on the scan, straighten and crop to it and pick the film base. A crop of your own stays": "Bild auf dem Scan finden, gerade ausrichten, zuschneiden und die Filmbasis wählen. Ein eigener Zuschnitt bleibt erhalten",
+  "Zap!…": "Zap!…",
+  "Negative": "Negativ",
+  "Sprocket holes": "Perforation",
+  "Remove Sprocket Holes": "Perforation entfernen",
+  "Keep Sprocket Holes": "Perforation behalten",
+  "Whether the crop keeps 35 mm film's sprocket holes": "Ob der Zuschnitt die Perforation des Kleinbildfilms behält",
+  "A slide is only cropped, never converted": "Ein Dia wird nur zugeschnitten, nie umgewandelt"
 }

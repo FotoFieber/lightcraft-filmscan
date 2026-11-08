@@ -87,6 +87,14 @@ pub enum Dialog {
         /// Also save the names as a label set of this name (empty = don't).
         save_as: String,
     },
+    /// Photo ▸ Zap!…: Zap!'s choices for the selection (as `develop.negativeZap` takes them),
+    /// started from the last ones used.
+    NegativeZap {
+        film: String,
+        format: String,
+        sprockets: String,
+        margin: String,
+    },
     /// Batch rename the selected photos with a file-name template.
     Rename {
         template: String,

@@ -44,7 +44,11 @@ const TONES: [(&str, &str); 13] = [
 ];
 const LOOKS: [(&str, &str); 5] = [("neutral", "Neutral"), ("lab_warm", "Lab Warm"), ("lab_cool", "Lab Cool"), ("print", "Print"), ("clean", "Clean")];
 /// Where Zap! puts the crop: on the picture, a little inside it, or with a little rebate.
-const MARGINS: [(&str, &str); 3] = [("inside", "Inside the Frame"), ("edge", "To the Edge"), ("border", "With Border")];
+pub(crate) const MARGINS: [(&str, &str); 3] = [("inside", "Inside the Frame"), ("edge", "To the Edge"), ("border", "With Border")];
+/// Zap!'s choice of the sprocket holes, as `develop.negativeZap` takes it.
+pub(crate) const SPROCKETS: [(&str, &str); 2] = [("remove", "Remove Sprocket Holes"), ("keep", "Keep Sprocket Holes")];
+/// What was scanned, as `develop.negativeZap` takes it.
+pub(crate) const FILMS: [(&str, &str); 2] = [("negative", "Negative"), ("slide", "Slide")];
 const WBS: [(&str, &str); 4] = [("as_is", "As Shot"), ("warm", "Warm"), ("cool", "Cool"), ("tungsten_film", "Tungsten Film")];
 
 /// A label of this panel, in its context ([`crate::i18n::NEGATIVE_CONTEXT`]).
@@ -131,7 +135,7 @@ fn picker_row(app: &mut LightcraftApp, ui: &mut egui::Ui, tool: &str, label: &st
 }
 
 /// A small dropdown of `options` (value, label) for a Zap! choice kept in the UI state.
-fn zap_choice(ui: &mut egui::Ui, key: &str, tip: &str, current: &mut String, options: &[(&str, &str)]) {
+pub(crate) fn zap_choice(ui: &mut egui::Ui, key: &str, tip: &str, current: &mut String, options: &[(&str, &str)]) {
     let t = Tokens::get(ui.ctx());
     let shown = options.iter().find(|(v, _)| *v == current.as_str()).or(options.first()).map_or("", |(_, l)| *l);
     let r = crate::widgets::dropdown(ui, key, tr(shown), t.font(13.0), t.text_label).on_hover_text(tr(tip));
@@ -149,9 +153,10 @@ fn zap_choice(ui: &mut egui::Ui, key: &str, tip: &str, current: &mut String, opt
 fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     padded(ui, |ui| {
         ui.horizontal(|ui| {
-            let tip = "Find the frame on the scan, straighten and crop to it (35 mm: by the sprocket holes) and pick the film base. A crop of your own stays";
+            let tip = "Find the frame on the scan, straighten and crop to it and pick the film base. A crop of your own stays";
             if text_button(ui, "negative-zap", "Zap!", false).on_hover_text(tr(tip)).clicked() {
-                let p = json!({"margin": app.ui.negative_zap_margin, "format": app.ui.negative_zap_format});
+                let u = &app.ui;
+                let p = json!({"margin": u.negative_zap_margin, "format": u.negative_zap_format, "sprockets": u.negative_zap_sprockets, "film": u.negative_zap_film});
                 if let Err(e) = app.run("develop.negativeZap", p) {
                     app.toast(ui.ctx(), e);
                 }
@@ -159,6 +164,11 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let formats: Vec<(&str, &str)> = FORMATS.iter().map(|f| (f.0, f.1)).collect();
             zap_choice(ui, "negative-zapMargin", "Where the crop sits on the frame's edge", &mut app.ui.negative_zap_margin, &MARGINS);
             zap_choice(ui, "negative-zapFormat", "The film format, for an edge the scan doesn't show", &mut app.ui.negative_zap_format, &formats);
+        });
+        ui.horizontal(|ui| {
+            let tip = "Whether the crop keeps 35 mm film's sprocket holes";
+            zap_choice(ui, "negative-zapSprockets", tip, &mut app.ui.negative_zap_sprockets, &SPROCKETS);
+            zap_choice(ui, "negative-zapFilm", "A slide is only cropped, never converted", &mut app.ui.negative_zap_film, &FILMS);
         });
     });
 }

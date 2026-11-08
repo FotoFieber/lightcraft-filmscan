@@ -440,6 +440,7 @@ fn dialog_title(app: &LightcraftApp, dlg: &Dialog) -> String {
         Dialog::NewAlbum { .. } => "Create Album",
         Dialog::RenameAlbum { .. } => "Rename Album",
         Dialog::Rename { .. } => "Rename Photos",
+        Dialog::NegativeZap { .. } => "Zap!",
         Dialog::Import { .. } => "Import Photos",
         Dialog::LightroomResult { .. } => "Lightroom Catalog Import",
         Dialog::LabelNames { .. } => "Edit Color Label Names",
@@ -590,6 +591,7 @@ fn fixed_ok_label(app: &LightcraftApp, dlg: &Dialog, informational: bool) -> &'s
         }
         Dialog::RenameAlbum { .. } | Dialog::Rename { .. } | Dialog::RenameKeyword { .. } => "Rename",
         Dialog::AutoStack { .. } => "Create Stacks",
+        Dialog::NegativeZap { .. } => "Zap!",
         Dialog::CaptureTime { .. } => "Change Time",
         Dialog::Cull { .. } => "Cull",
         Dialog::CopySettings { .. } => "Copy",
@@ -1172,6 +1174,22 @@ fn label_names_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg:
         ))
         .color(t.text_dim),
     );
+}
+
+/// The body of the Zap! dialog: what was scanned, the film format, the sprocket holes and where the
+/// crop sits, for every selected photo.
+fn negative_zap_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg: &mut Dialog) {
+    use crate::panels::negative::{FILMS, MARGINS, SPROCKETS, zap_choice};
+    let Dialog::NegativeZap { film, format, sprockets, margin } = dlg else { return };
+    let n = app.session.selected().len();
+    ui.label(egui::RichText::new(crate::i18n::tr_format!("{n} photo{}", if n == 1 { "" } else { "s" }, n = n)).color(t.text_dim));
+    let formats: Vec<(&str, &str)> = lightcraft_pipeline::negative_frame::FORMATS.iter().map(|f| (f.0, f.1)).collect();
+    field(ui, "Film", |ui| zap_choice(ui, "negativeZap-film", "A slide is only cropped, never converted", film, &FILMS));
+    field(ui, "Format", |ui| zap_choice(ui, "negativeZap-format", "The film format, for an edge the scan doesn't show", format, &formats));
+    field(ui, "Sprocket holes", |ui| {
+        zap_choice(ui, "negativeZap-sprockets", "Whether the crop keeps 35 mm film's sprocket holes", sprockets, &SPROCKETS)
+    });
+    field(ui, "Edge", |ui| zap_choice(ui, "negativeZap-margin", "Where the crop sits on the frame's edge", margin, &MARGINS));
 }
 
 /// The body of the Rename dialog.
@@ -2092,6 +2110,7 @@ fn dialog_content(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, body_m
         Dialog::CaptureTime { .. } => capture_time_body(app, ui, t, dlg),
         Dialog::LabelNames { .. } => label_names_body(app, ui, t, dlg),
         Dialog::Rename { .. } => rename_body(app, ui, t, dlg),
+        Dialog::NegativeZap { .. } => negative_zap_body(app, ui, t, dlg),
         Dialog::RenamePerson { .. } => rename_person_body(app, ui, t, confirm, dlg),
         Dialog::RenameKeyword { .. } => rename_keyword_body(app, ui, t, confirm, dlg),
         Dialog::MergeKeywords { .. } => merge_keywords_body(app, ui, t, confirm, dlg),

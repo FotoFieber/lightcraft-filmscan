@@ -271,7 +271,7 @@ const LAYOUT: &[(&str, &[&str])] = &[
             "develop.auto",
             "develop.treatment",
             "photo.convertNegative",
-            "develop.negativeZap",
+            "dialog.negativeZap",
             "develop.reset",
             "develop.updateProcess",
             "dialog.createPreset",
