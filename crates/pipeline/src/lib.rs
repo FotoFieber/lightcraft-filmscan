@@ -26,6 +26,7 @@
 pub mod auto;
 pub mod blemish;
 pub mod colorops;
+pub mod crystal;
 pub mod cull;
 pub mod curve;
 pub mod dust;
@@ -748,7 +749,7 @@ fn render_impl(src: Src<'_>, info: &SourceInfo, s: &DevelopSettings, req: &Rende
         c.put(CacheEntry { src: a.clone(), geo, sampled, lin: Some((lin_key, lin)), colour_noise, planes });
     }
     if req.depth != OutputDepth::U8 {
-        let deep = finish::finish_deep(&prep, s, frame, info, req.space, req.depth, req.proof);
+        let deep = finish::finish_deep(&prep, s, frame, info, req);
         let deep = match plan.keep {
             Some(k) => deep.crop(k.x, k.y, k.w, k.h),
             None => deep,
@@ -758,7 +759,7 @@ fn render_impl(src: Src<'_>, info: &SourceInfo, s: &DevelopSettings, req: &Rende
         lap("finish (deep)", &mut t);
         return Rendered { image, histogram, deep: Some(deep) };
     }
-    let image = finish::finish(&prep, s, frame, info, req.space, req.display.as_ref(), req.proof);
+    let image = finish::finish(&prep, s, frame, info, req);
     lap("finish", &mut t);
     let cut = |i: &Rgba8| match plan.keep {
         Some(k) => i.crop(k.x, k.y, k.w, k.h),
@@ -909,6 +910,8 @@ fn plan_preserves_matching_box_size() {
 mod tests;
 #[cfg(test)]
 mod tests_geometry;
+#[cfg(test)]
+mod tests_grain;
 #[cfg(test)]
 mod tests_hdr;
 #[cfg(test)]
