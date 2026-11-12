@@ -1,0 +1,60 @@
+# The .deb of LightCraft Film Scan (nfpm). build-deb.sh stages ${FS} and substitutes it (nfpm
+# doesn't expand env vars in `src`). No file is shared with the official lightcraft package, so
+# both can be installed: the binaries live in /usr/lib/lightcraft-filmscan, the commands are
+# lightcraft-filmscan and lightcraft-filmscan-cli, the menu entry and icons are
+# ch.fotofieber.LightCraftFilmScan.
+name: lightcraft-filmscan
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+release: 1
+section: graphics
+priority: optional
+maintainer: ${LIGHTCRAFT_MAINTAINER}
+vendor: FotoFieber
+homepage: https://github.com/FotoFieber/lightcraft-filmscan
+license: MIT OR Apache-2.0
+description: |-
+  LightCraft Film Scan: LightCraft, the open-source photo library and raw
+  developer, with Convert Negative added (film negative and slide scans to
+  positives, Zap! frame detection and cropping, roll mode). Not an official
+  LightCraft release. Installs beside LightCraft with its own settings and
+  library. Includes lightcraft-filmscan-cli.
+
+# Same runtime needs as the official package (packaging/linux/nfpm.yaml).
+depends:
+  - libc6 (>= 2.35)
+  - libgcc-s1
+  - libxkbcommon0
+  - libvulkan1 | libegl1
+recommends:
+  - libwayland-client0
+  - libx11-6
+  - libx11-xcb1
+  - libxcursor1
+  - libxi6
+  - libxrandr2
+  - mesa-vulkan-drivers
+  - xdg-desktop-portal
+
+contents:
+  - src: ${FS}/usr/lib/lightcraft-filmscan/lightcraft
+    dst: /usr/lib/lightcraft-filmscan/lightcraft
+    file_info: { mode: 0755 }
+  - src: ${FS}/usr/lib/lightcraft-filmscan/lightcraft-cli
+    dst: /usr/lib/lightcraft-filmscan/lightcraft-cli
+    file_info: { mode: 0755 }
+  - src: ${FS}/usr/bin/lightcraft-filmscan
+    dst: /usr/bin/lightcraft-filmscan
+    file_info: { mode: 0755 }
+  - src: /usr/bin/lightcraft-filmscan
+    dst: /usr/bin/lightcraft-filmscan-cli
+    type: symlink
+  - src: ${FS}/usr/share/
+    dst: /usr/share/
+    type: tree
+
+scripts:
+  postinstall: packaging/linux/postinst.sh
+  postremove: packaging/linux/postinst.sh

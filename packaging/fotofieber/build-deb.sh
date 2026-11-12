@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build the .deb of LightCraft Film Scan, the FotoFieber build with Convert Negative (x86_64), inside an
 # Ubuntu 22.04 container, so it runs on every distribution with glibc >= 2.35 (Ubuntu 22.04+, Debian 12+,
-# Mint 21+, ...). The package is called lightcraft-filmscan and replaces the official lightcraft package,
-# which installs the same files.
+# Mint 21+, ...). The package is called lightcraft-filmscan and installs beside the official lightcraft
+# package (packaging/fotofieber/nfpm.yaml).
 #
 #   packaging/fotofieber/build-deb.sh
 #
@@ -72,26 +72,34 @@ fi
 ln -sf "nfpm-$NFPM_VERSION" "$C/bin/nfpm"
 git config --global --add safe.directory '*'
 cd /src
-# package.sh stages the file tree (and writes a tarball we don't ship); the .deb is made here from
-# packaging/linux/nfpm.yaml under this build's own package name, vendor and homepage.
+# package.sh builds and stages the official file tree (its tarball is not shipped); the .deb is
+# made from it under LightCraft Film Scan's own names, so it installs beside an official LightCraft.
 CRAFT_FONTS_DIR=$C/craft-fonts DIST=$C/package-dist packaging/linux/package.sh --formats tar
 STAGE=$CARGO_TARGET_DIR/linux-package/root
+FS=$C/filmscan-root
+ID=ch.fotofieber.LightCraftFilmScan
+rm -rf "$FS"
+install -Dm755 "$STAGE/usr/bin/lightcraft" "$FS/usr/lib/lightcraft-filmscan/lightcraft"
+install -Dm755 "$STAGE/usr/bin/lightcraft-cli" "$FS/usr/lib/lightcraft-filmscan/lightcraft-cli"
+install -Dm755 packaging/fotofieber/lightcraft-filmscan.sh "$FS/usr/bin/lightcraft-filmscan"
+mkdir -p "$FS/usr/share/applications"
+sed -e 's|^Name=.*|Name=LightCraft Film Scan|' \
+  -e 's|^GenericName=.*|GenericName=Photo Library, Raw Developer and Film Scans|' \
+  -e 's|^Exec=lightcraft |Exec=lightcraft-filmscan |' \
+  -e "s|^Icon=.*|Icon=$ID|" \
+  -e "s|^StartupWMClass=.*|StartupWMClass=$ID|" \
+  -e 's|^Keywords=\(.*\)|Keywords=\1film;negative;scan;|' \
+  packaging/linux/ai.storyteller.lightcraft.desktop >"$FS/usr/share/applications/$ID.desktop"
+grep -q "^Exec=lightcraft-filmscan " "$FS/usr/share/applications/$ID.desktop"
+desktop-file-validate "$FS/usr/share/applications/$ID.desktop"
+for f in "$STAGE"/usr/share/icons/hicolor/*/apps/ai.storyteller.lightcraft.*; do
+  rel="${f#"$STAGE"/}"
+  install -Dm644 "$f" "$FS/$(dirname "$rel")/$ID.${f##*.}"
+done
+mkdir -p "$FS/usr/share/doc/lightcraft-filmscan"
+cp "$STAGE"/usr/share/doc/lightcraft/* "$FS/usr/share/doc/lightcraft-filmscan/"
 VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' Cargo.toml)"
-sed -e "s|\${STAGE}|$STAGE|g" \
-  -e 's|^name: lightcraft$|name: lightcraft-filmscan|' \
-  -e 's|^vendor: .*|vendor: FotoFieber|' \
-  -e 's|^homepage: .*|homepage: https://github.com/FotoFieber/lightcraft-filmscan|' \
-  packaging/linux/nfpm.yaml >"$C/nfpm-filmscan.yaml"
-grep -q '^name: lightcraft-filmscan$' "$C/nfpm-filmscan.yaml"
-cat >>"$C/nfpm-filmscan.yaml" <<'YAML'
-# LightCraft Film Scan installs the same files as the official package: it takes its place.
-conflicts:
-  - lightcraft
-replaces:
-  - lightcraft
-provides:
-  - lightcraft
-YAML
+sed "s|\${FS}|$FS|g" packaging/fotofieber/nfpm.yaml >"$C/nfpm-filmscan.yaml"
 VERSION="$VERSION" NFPM_ARCH=amd64 LIGHTCRAFT_MAINTAINER="$LIGHTCRAFT_MAINTAINER" \
   nfpm package -f "$C/nfpm-filmscan.yaml" -p deb -t "/src/dist/fotofieber/lightcraft-filmscan-$VERSION-linux-x86_64.deb"
 IN_CONTAINER

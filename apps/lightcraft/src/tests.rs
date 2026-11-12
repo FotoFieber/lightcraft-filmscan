@@ -659,3 +659,14 @@ fn on_exit_removes_the_lock_owner_note() {
     assert!(lightcraft_engine::Session::new().open_library(&dir, false).is_ok(), "the library is still locked");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_app_id_can_be_set_for_a_build_installed_beside_the_official_one() {
+    use std::ffi::OsString;
+    assert_eq!(app_id_from(None), APP_ID);
+    assert_eq!(app_id_from(Some(OsString::from("ch.fotofieber.LightCraftFilmScan"))), "ch.fotofieber.LightCraftFilmScan");
+    for bad in ["", "lightcraft", "a..b", ".a.b", "a.b.", "a.b c", "a.b/c", "a.ü"] {
+        assert_eq!(app_id_from(Some(OsString::from(bad))), APP_ID, "{bad:?} is no app id");
+    }
+    assert_eq!(app_id_from(Some(OsString::from(format!("a.{}", "b".repeat(300))))), APP_ID, "too long");
+}

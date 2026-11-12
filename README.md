@@ -614,9 +614,11 @@ is the newest). Each release names the LightCraft version it is based on.
 | `lightcraft-filmscan-patches-<upstream-ver>.tar.gz` | the same changes commit by commit, as `git format-patch` files |
 | Source code (zip / tar.gz) | the full source of the release |
 
-Install it with `sudo apt install ./lightcraft-filmscan-<ver>-linux-x86_64.deb`. The package is called
-`lightcraft-filmscan` and replaces the official `lightcraft` package, since both install the same program; to go
-back, install the official package again. The app itself is still called LightCraft, and Help ▸ Check for Updates
+Install it with `sudo apt install ./lightcraft-filmscan-<ver>-linux-x86_64.deb`. It installs **beside** an official
+LightCraft: the menu entry is **LightCraft Film Scan**, the commands are `lightcraft-filmscan` and
+`lightcraft-filmscan-cli`, and it keeps its own settings (`~/.config/lightcraft-filmscan`) and its own library
+(`~/Pictures/LightCraft Film Scan Library`), so the official LightCraft never opens photos with film settings it
+doesn't know. `LIGHTCRAFT_CONFIG_DIR` and `LIGHTCRAFT_LIBRARY` choose other folders. Help ▸ Check for Updates
 reports official releases.
 
 On other systems (Windows, macOS, other Linux distributions, FreeBSD, the web) build this branch from source, see

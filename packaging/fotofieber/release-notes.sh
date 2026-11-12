@@ -97,9 +97,11 @@ contributors (MIT OR Apache-2.0), plus the changes listed below. Report problems
 | \`lightcraft-filmscan-patches-$BASE.tar.gz\` | the same changes commit by commit, as \`git format-patch\` files |
 | Source code (zip / tar.gz) | the full source of this build, tag \`$TAG\` |
 
-Install: \`sudo apt install ./lightcraft-filmscan-$VERSION-linux-x86_64.deb\`. The package is called
-\`lightcraft-filmscan\` and replaces an installed official \`lightcraft\` package (both install \`/usr/bin/lightcraft\`);
-to go back, install the official package again. The app itself is still called LightCraft.
+Install: \`sudo apt install ./lightcraft-filmscan-$VERSION-linux-x86_64.deb\`. It installs **beside** an official
+LightCraft: menu entry **LightCraft Film Scan**, commands \`lightcraft-filmscan\` and \`lightcraft-filmscan-cli\`, its own
+settings (\`~/.config/lightcraft-filmscan\`) and its own library (\`~/Pictures/LightCraft Film Scan Library\`), so the
+official LightCraft never opens photos with film settings it doesn't know. \`LIGHTCRAFT_CONFIG_DIR\` and
+\`LIGHTCRAFT_LIBRARY\` choose other folders.
 Built on Ubuntu 22.04 with Rust, HEIC/HEIF support and the craft-fonts CJK faces, like the official packages.
 
 ${shots:+## Screenshots
