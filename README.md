@@ -1,12 +1,24 @@
-<p align="center">
-  <a href="https://getartcraft.com/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/artcraft-logo-white.svg">
-      <img alt="ArtCraft" src="docs/brand/artcraft-logo.svg" width="200">
-    </picture>
-  </a>
-</p>
-
+> [!IMPORTANT]
+> **This is a modified LightCraft: the FotoFieber Convert Negative build.** It is **not an official release** and
+> is not made or endorsed by the ArtCraft team. It is LightCraft (by the ArtCraft team and the LightCraft
+> contributors, [storytold/lightcraft](https://github.com/storytold/lightcraft)) plus **Convert Negative**: film
+> negative and slide scans to positives, **Zap!** (find the frame on a camera scan, straighten, crop and measure the
+> film base in one step) and a **roll mode** that measures several frames together.
+>
+> - **Download:** a `.deb` for Debian, Ubuntu, Mint, Zorin and others (x86_64, glibc ≥ 2.35) on the
+>   [releases page](https://github.com/FotoFieber/lightcraft/releases); each release names the upstream version it
+>   is based on and lists every change, commit by commit.
+> - **Where the changes come from:** Convert Negative part 1/4 is upstream
+>   ([#2490](https://github.com/storytold/lightcraft/pull/2490)); parts 2–4 are the open upstream pull requests
+>   [#3985](https://github.com/storytold/lightcraft/pull/3985), [#3986](https://github.com/storytold/lightcraft/pull/3986)
+>   and [#3987](https://github.com/storytold/lightcraft/pull/3987) by [@smyrgeorge](https://github.com/smyrgeorge),
+>   whose conversion maths come from his [Film Lab](https://github.com/smyrgeorge/film-lab). Zap!, the Film Scan
+>   menu, roll mode, the German texts and the fixes that keep it all working on current LightCraft are this fork's
+>   own. The roll mode and Zap!'s film base search take ideas (not code) from
+>   [#3623](https://github.com/storytold/lightcraft/pull/3623) by [@mcalapurge](https://github.com/mcalapurge).
+> - **Report problems with this build** [here](https://github.com/FotoFieber/lightcraft/issues), not upstream.
+> - As the ArtCraft brand terms ask of a modified version, the ArtCraft logos are removed from this fork and the
+>   app. Everything below describes LightCraft as the ArtCraft team publishes it.
 
 <p align="center">
   <img src="assets/app-icon/hicolor/256x256/apps/ai.storyteller.lightcraft.png" width="128" height="128" alt="LightCraft icon: an engraved lynx on an amber tile">
@@ -39,13 +51,8 @@
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/artcraft"><img alt="Join the ArtCraft community on Discord" src="https://img.shields.io/badge/Join%20us%20on%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" height="40"></a>
-</p>
-
-<p align="center">
-  <a href="https://getartcraft.com/apps/lightcraft"><b>LightCraft on getartcraft.com</b></a> ·
-  <a href="https://getartcraft.com/">ArtCraft</a> ·
-  <a href="https://getartcraft.com/apps">All Crafting Apps</a>
+  <a href="https://github.com/FotoFieber/lightcraft/releases"><b>This build's releases</b></a> ·
+  <a href="https://github.com/storytold/lightcraft"><b>The original LightCraft</b></a>
 </p>
 
 <br>
@@ -56,9 +63,6 @@
   <sub><i>Ansel Adams, "The Tetons and the Snake River" (1942). Public domain, U.S. National Archives. Developed in LightCraft.</i></sub>
 </p>
 
-> [!NOTE]
-> **ArtCraft is a community of artists from all walks of life.** Digital, generative, music,
-> games &mdash; if you make things, you're one of us. **[Come say hi on Discord](https://discord.gg/artcraft).**
 
 <p align="center">
   <a href="#edit-like-you-mean-it">Editing</a> ·
@@ -674,27 +678,9 @@ And [**ArtCraft**](https://getartcraft.com/) itself, our AI image and video stud
 
 <br>
 
-<p align="center">
-  <a href="https://discord.gg/artcraft"><img alt="Join the ArtCraft community on Discord" src="https://img.shields.io/badge/Join%20us%20on%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" height="40"></a>
-</p>
-
-<h3 align="center">Come make things with us</h3>
-
-<p align="center">
-  Our Discord is where artists of every kind hang out: people who paint, shoot, draw, cut film,
-  set type, and people still figuring out what they like to make. Share what you're working on,
-  ask for help, tell us what's broken, or tell us what you wish these tools could do.
-  Whatever your medium and however long you've been at it, you're welcome here.
-</p>
-
-<p align="center">
-  <a href="https://discord.gg/artcraft"><b>discord.gg/artcraft</b></a> ·
-  <a href="https://getartcraft.com/">getartcraft.com</a> ·
-  <a href="https://getartcraft.com/apps">The Crafting Apps</a> ·
-  <a href="https://getartcraft.com/apps/lightcraft">LightCraft</a>
-</p>
-
-<br>
+The original LightCraft's community meets on the ArtCraft team's channels, linked from
+[storytold/lightcraft](https://github.com/storytold/lightcraft). Questions about this build go to its
+[issues](https://github.com/FotoFieber/lightcraft/issues).
 
 ## License and credits
 
@@ -711,14 +697,13 @@ Inter (SIL OFL 1.1). Builds made with [craft-fonts](https://github.com/storytold
 also embed its Chinese and Japanese fonts (Noto Sans CJK SC, BIZ UDPGothic, BIZ UDMincho, Shippori Mincho; SIL OFL 1.1), listed in its
 [ATTRIBUTION.md](https://github.com/storytold/craft-fonts/blob/main/ATTRIBUTION.md). All icons are original.
 
-The ArtCraft name, wordmark and logos in [`docs/brand/`](docs/brand/) are trademarks of the
-ArtCraft Team and are not covered by this license. They may be used only unmodified, and only as
-part of this repository and LightCraft, under [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt).
-Forks and modified versions must remove them.
+The ArtCraft name, wordmark and logos are trademarks of the ArtCraft Team and are not covered by
+this license ([`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt)). As those terms ask of
+a modified version, this fork does not carry the logos.
 
 <p align="center">
-  <a href="https://getartcraft.com/"><img alt="ArtCraft" src="docs/brand/artcraft-mark.svg" width="28"></a><br>
-  <sub>Made by the <a href="https://getartcraft.com/">ArtCraft</a> team and community.</sub>
+  <sub>LightCraft is made by the ArtCraft team and community. This build adds Convert Negative and is maintained by
+  <a href="https://github.com/FotoFieber">FotoFieber</a>.</sub>
 </p>
 
 ## Star history
