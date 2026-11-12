@@ -1,0 +1,34 @@
+# Screenshot tour for the release notes (control-protocol requests, run by screenshots.sh).
+# Written for six 35 mm camera scans of one roll; photo ids are the import order, @OUT@ the output folder.
+# Turn the frames that were scanned on their side upright.
+{"method": "engine.execute", "params": {"command": "library.select", "params": {"ids": [1], "active": 1}}}
+{"method": "engine.execute", "params": {"command": "photo.rotateRight", "params": {}}}
+{"method": "engine.execute", "params": {"command": "library.select", "params": {"ids": [2, 4], "active": 2}}}
+{"method": "engine.execute", "params": {"command": "photo.rotateLeft", "params": {}}}
+# 1. the scan as it comes from the camera: a negative in its holder
+{"method": "ui.set", "params": {"view": "detail"}}
+{"method": "engine.execute", "params": {"command": "library.select", "params": {"ids": [1, 2, 3, 4, 5, 6], "active": 5}}}
+{"method": "ui.settle", "params": {"timeoutMs": 60000}}
+{"method": "ui.screenshot", "params": {"path": "@OUT@/1-the-negative-scan.png", "headless": true}}
+# 2. Photo > Film Scan > Zap!... on the whole roll
+{"method": "ui.menu.invoke", "params": {"command": "dialog.negativeZap"}}
+{"method": "ui.settle", "params": {"timeoutMs": 60000}}
+{"method": "ui.screenshot", "params": {"path": "@OUT@/2-photo-film-scan-zap.png", "headless": true}}
+{"method": "ui.dialog.cancel"}
+# 3. each photo on its own: found, straightened, cropped and converted, with the Film Scan panel
+{"method": "ui.menu.invoke", "params": {"command": "develop.negativeZap", "params": {"roll": false}}}
+{"method": "ui.settle", "params": {"timeoutMs": 120000}}
+{"method": "ui.set", "params": {"right": "negative"}}
+{"method": "ui.settle", "params": {"timeoutMs": 60000}}
+{"method": "ui.screenshot", "params": {"path": "@OUT@/3-zapped-with-the-film-scan-panel.png", "headless": true}}
+# 4. the whole roll in the grid
+{"method": "ui.set", "params": {"view": "photoGrid"}}
+{"method": "ui.settle", "params": {"timeoutMs": 60000}}
+{"method": "ui.screenshot", "params": {"path": "@OUT@/4-the-roll-converted.png", "headless": true}}
+# 5. measured as one roll: one colour measurement shared by every frame
+{"method": "ui.set", "params": {"view": "detail"}}
+{"method": "ui.menu.invoke", "params": {"command": "develop.negativeZap", "params": {"roll": true}}}
+{"method": "ui.settle", "params": {"timeoutMs": 120000}}
+{"method": "ui.set", "params": {"right": "negative"}}
+{"method": "ui.settle", "params": {"timeoutMs": 60000}}
+{"method": "ui.screenshot", "params": {"path": "@OUT@/5-measured-as-one-roll.png", "headless": true}}
