@@ -162,8 +162,8 @@ fn full_screen_moves_the_left_buttons_into_the_traffic_lights_space() {
     h.request("ui.key", json!({"key": "f", "cmd": true, "shift": true}), T);
     play(&mut h);
     assert!(h.app.window_is_fullscreen);
-    let right_padding = window_right - widget(&h, "icon:discord").right();
-    assert_eq!(widget(&h, "icon:sidebar").left(), right_padding, "My Photos as far from the left edge as Discord is from the right");
+    let right_padding = window_right - widget(&h, "icon:help").right();
+    assert_eq!(widget(&h, "icon:sidebar").left(), right_padding, "My Photos as far from the left edge as Help is from the right");
     h.request("ui.key", json!({"key": "f", "cmd": true, "shift": true}), T);
     play(&mut h);
     assert!(!h.app.window_is_fullscreen);

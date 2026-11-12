@@ -2071,22 +2071,10 @@ fn about_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg: &mut 
                 crate::theme::font_credits(app.chinese_font.is_some())
             ));
             ui.add_space(10.0);
-            let r = crate::button::Button::new("Join the ArtCraft Discord")
-                .primary()
-                .large()
-                .min_width(260.0)
-                .widget("button:aboutDiscord")
-                .tooltip(crate::links::DISCORD)
-                .show(ui);
-            if r.clicked() {
-                let _ = crate::links::open(app, crate::links::DISCORD);
-            }
+            // a modified build may say in plain text what it is based on (docs/brand/LICENSE-brand.txt)
+            ui.label(crate::i18n::tr(ABOUT_BUILD));
             ui.add_space(6.0);
-            for (label, url) in [
-                ("LightCraft website", crate::links::APP_PAGE),
-                ("Source code on GitHub", crate::links::GITHUB),
-                ("ArtCraft — more creative apps", crate::links::WEBSITE),
-            ] {
+            for (label, url) in [("Source code on GitHub", crate::links::GITHUB), ("Original LightCraft on GitHub", crate::links::UPSTREAM)] {
                 let r = ui.link(crate::i18n::tr(label)).on_hover_text(url);
                 if r.clicked() {
                     let _ = crate::links::open(app, url);
@@ -2095,6 +2083,9 @@ fn about_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg: &mut 
         }
     }
 }
+
+/// What the About window says this build is.
+pub(crate) const ABOUT_BUILD: &str = "Based on LightCraft by the ArtCraft team. This build adds Convert Negative and is not an official release.";
 
 /// The body of the open dialog: what each kind of dialog shows between its title and its buttons. `confirm` is set
 /// by a dialog that is confirmed from its body (a text field's Return).

@@ -182,7 +182,6 @@ fn right_icons(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, full: Rec
         None => crate::i18n::tr("Import Photos…").to_string(),
     };
     for (id, icon, tip, cmd) in [
-        ("discord", Icon::Chat, "Join the ArtCraft community on Discord", "app.discord"),
         ("cloud", Icon::Cloud, cloud_tip, ""),
         ("help", Icon::Help, "Keyboard shortcuts", "app.shortcuts"),
         ("share", Icon::Share, "Export", "dialog.export"),
