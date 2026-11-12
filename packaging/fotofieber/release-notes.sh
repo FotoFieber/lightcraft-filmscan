@@ -65,8 +65,15 @@ shots=""
 if compgen -G "$ROOT/dist/fotofieber/screenshots/*.png" >/dev/null; then
   for f in "$ROOT"/dist/fotofieber/screenshots/*.png; do
     name="$(basename "$f")"
-    caption="${name%.png}"; caption="${caption#[0-9]*-}"; caption="${caption//-/ }"
-    shots+="**${caption^}**"$'\n\n'"![${caption}](https://github.com/$FORK/releases/download/$TAG/$name)"$'\n\n'
+    case "$name" in
+      1-the-negative-scan.png) caption="A camera scan of a 35 mm colour negative in its holder, as imported" ;;
+      2-photo-film-scan-zap.png) caption="Photo ▸ Film Scan ▸ Zap!… on a roll: film, format, sprocket holes, edge, and each photo on its own or as one roll" ;;
+      3-zapped-with-the-film-scan-panel.png) caption="After Zap!: the frame found, straightened, cropped and converted, with the Film Scan panel" ;;
+      4-the-roll-converted.png) caption="The whole roll, each photo measured on its own" ;;
+      5-measured-as-one-roll.png) caption="The same frame measured as one roll: one colour measurement for all six photos" ;;
+      *) caption="${name%.png}"; caption="${caption#[0-9]*-}"; caption="${caption//-/ }"; caption="${caption^}" ;;
+    esac
+    shots+="**${caption}**"$'\n\n'"![${caption}](https://github.com/$FORK/releases/download/$TAG/$name)"$'\n\n'
   done
 fi
 
