@@ -3600,5 +3600,19 @@
   "As one roll: the film base and levels are measured on all the photos together, so they match; a photo scanned differently is measured on its own": "Als eine Rolle: Filmbasis und Tonwerte werden auf allen Fotos gemeinsam gemessen, damit sie zusammenpassen; ein anders gescanntes Foto wird einzeln gemessen",
   "The film base and levels are the roll's, measured on all its photos together; the sliders are this photo's own": "Filmbasis und Tonwerte gehören der Rolle und sind auf all ihren Fotos gemeinsam gemessen; die Regler gehören diesem Foto",
   "convert negative|Release": "Lösen",
-  "Measure this photo on its own again": "Dieses Foto wieder einzeln messen"
+  "Measure this photo on its own again": "Dieses Foto wieder einzeln messen",
+  "Prepare photos in the background": "Fotos im Hintergrund vorbereiten",
+  "Preparing photos in the background": "Fotos werden im Hintergrund vorbereitet",
+  "While you go through photos in the loupe, the next ones are made ready before you reach them, and when the computer is otherwise idle the previews of every photo in view are built. The photo on screen always comes first; the work shows in the activity list, where it can be stopped.": "Während du in der Lupenansicht durch die Fotos gehst, werden die nächsten vorbereitet, bevor du sie erreichst, und wenn der Computer sonst nichts zu tun hat, werden die Vorschauen aller Fotos in der Ansicht erstellt. Das Foto auf dem Bildschirm hat immer Vorrang; die Arbeit erscheint im Aktivitätsstapel, wo sie sich anhalten lässt.",
+  "Use different settings for this library": "Für diese Bibliothek eigene Einstellungen verwenden",
+  "For example, a timelapse library can prepare nothing while a wedding library prepares everything.": "Zum Beispiel kann eine Zeitraffer-Bibliothek nichts vorbereiten, während eine Hochzeits-Bibliothek alles vorbereitet.",
+  "Every photo": "Alle Fotos",
+  "Picks, rated and labelled": "Ausgewählte, bewertete und farbmarkierte",
+  "Only the photo on screen": "Nur das Foto auf dem Bildschirm",
+  "Culling (a folder before import)": "Fotoauswahl (ein Ordner vor dem Import)",
+  "Build previews for every photo in view": "Vorschauen für alle Fotos in der Ansicht erstellen",
+  "Starts once you step through a few photos. Uses about 1.5 MB of disk a photo, and the computer's spare time.": "Beginnt, sobald du durch einige Fotos blätterst. Braucht etwa 1,5 MB Speicherplatz pro Foto und die freie Rechenzeit des Computers.",
+  "Photos ahead": "Fotos im Voraus",
+  "Which photos": "Welche Fotos",
+  "The next photos are opened and kept ready to edit, so the first slider move on them is quick. Uses memory: a few hundred MB a photo.": "Die nächsten Fotos werden geöffnet und zum Bearbeiten bereitgehalten, damit die erste Reglerbewegung darauf schnell ist. Braucht Arbeitsspeicher: einige hundert MB pro Foto."
 }
