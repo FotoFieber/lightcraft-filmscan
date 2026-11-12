@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Build the .deb of the FotoFieber Convert Negative build (x86_64) inside an Ubuntu 22.04 container,
-# so it runs on every distribution with glibc >= 2.35 (Ubuntu 22.04+, Debian 12+, Mint 21+, ...).
+# Build the .deb of LightCraft Film Scan, the FotoFieber build with Convert Negative (x86_64), inside an
+# Ubuntu 22.04 container, so it runs on every distribution with glibc >= 2.35 (Ubuntu 22.04+, Debian 12+,
+# Mint 21+, ...). The package is called lightcraft-filmscan and replaces the official lightcraft package,
+# which installs the same files.
 #
 #   packaging/fotofieber/build-deb.sh
 #
-# Output: dist/fotofieber/lightcraft-<version>-linux-x86_64.deb and SHA256SUMS.txt.
+# Output: dist/fotofieber/lightcraft-filmscan-<version>-linux-x86_64.deb and SHA256SUMS.txt.
 # Needs podman (or CONTAINER=docker). Caches (rustup, cargo, target, craft-fonts) live in
 # target/fotofieber/, so a second run only rebuilds what changed.
 set -euo pipefail
@@ -70,11 +72,32 @@ fi
 ln -sf "nfpm-$NFPM_VERSION" "$C/bin/nfpm"
 git config --global --add safe.directory '*'
 cd /src
-CRAFT_FONTS_DIR=$C/craft-fonts DIST=/src/dist/fotofieber packaging/linux/package.sh --formats deb
+# package.sh stages the file tree (and writes a tarball we don't ship); the .deb is made here from
+# packaging/linux/nfpm.yaml under this build's own package name, vendor and homepage.
+CRAFT_FONTS_DIR=$C/craft-fonts DIST=$C/package-dist packaging/linux/package.sh --formats tar
+STAGE=$CARGO_TARGET_DIR/linux-package/root
+VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' Cargo.toml)"
+sed -e "s|\${STAGE}|$STAGE|g" \
+  -e 's|^name: lightcraft$|name: lightcraft-filmscan|' \
+  -e 's|^vendor: .*|vendor: FotoFieber|' \
+  -e 's|^homepage: .*|homepage: https://github.com/FotoFieber/lightcraft-filmscan|' \
+  packaging/linux/nfpm.yaml >"$C/nfpm-filmscan.yaml"
+grep -q '^name: lightcraft-filmscan$' "$C/nfpm-filmscan.yaml"
+cat >>"$C/nfpm-filmscan.yaml" <<'YAML'
+# LightCraft Film Scan installs the same files as the official package: it takes its place.
+conflicts:
+  - lightcraft
+replaces:
+  - lightcraft
+provides:
+  - lightcraft
+YAML
+VERSION="$VERSION" NFPM_ARCH=amd64 LIGHTCRAFT_MAINTAINER="$LIGHTCRAFT_MAINTAINER" \
+  nfpm package -f "$C/nfpm-filmscan.yaml" -p deb -t "/src/dist/fotofieber/lightcraft-filmscan-$VERSION-linux-x86_64.deb"
 IN_CONTAINER
 
 VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' "$ROOT/Cargo.toml")"
-DEB="lightcraft-$VERSION-linux-x86_64.deb"
+DEB="lightcraft-filmscan-$VERSION-linux-x86_64.deb"
 [[ -f "$OUT/$DEB" ]] || { echo "error: $OUT/$DEB was not written" >&2; exit 1; }
 (cd "$OUT" && sha256sum "$DEB" >SHA256SUMS.txt)
 # The commit the .deb was built from; publish.sh refuses to publish it with other source.

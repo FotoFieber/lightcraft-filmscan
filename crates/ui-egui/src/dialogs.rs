@@ -2085,7 +2085,7 @@ fn about_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg: &mut 
 }
 
 /// What the About window says this build is.
-pub(crate) const ABOUT_BUILD: &str = "Based on LightCraft by the ArtCraft team. This build adds Convert Negative and is not an official release.";
+pub(crate) const ABOUT_BUILD: &str = "LightCraft Film Scan: LightCraft by the ArtCraft team with Convert Negative added. Not an official release.";
 
 /// The body of the open dialog: what each kind of dialog shows between its title and its buttons. `confirm` is set
 /// by a dialog that is confirmed from its body (a text field's Return).

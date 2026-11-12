@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> This is a modified LightCraft (FotoFieber Convert Negative build), not an official release. Downloads (one `.deb` for x86_64
+> This is LightCraft Film Scan, a modified LightCraft by FotoFieber, not an official release. Downloads (one `.deb` for x86_64
 > Linux), building this branch, where its changes come from and where to report problems: see [README.md](README.md).
 > The sections below describe the original LightCraft and its official downloads.
 

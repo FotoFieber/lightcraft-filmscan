@@ -1,6 +1,6 @@
 //! Project links (Help menu, About dialog).
 //!
-//! This is the FotoFieber Convert Negative build, a modified version of LightCraft. The ArtCraft
+//! This is LightCraft Film Scan, the FotoFieber build with Convert Negative, a modified version of LightCraft. The ArtCraft
 //! brand terms (`docs/brand/LICENSE-brand.txt`) ask a published modified version to drop the
 //! ArtCraft name, so the ArtCraft website and Discord links are gone and the source and feedback
 //! links point at this build's own repository.
@@ -8,7 +8,7 @@
 /// The app's id in URLs.
 pub const APP: &str = "lightcraft";
 /// This build's source repository (the fork with Convert Negative).
-pub const GITHUB: &str = "https://github.com/FotoFieber/lightcraft";
+pub const GITHUB: &str = "https://github.com/FotoFieber/lightcraft-filmscan";
 /// The upstream project this build is based on.
 pub const UPSTREAM: &str = "https://github.com/storytold/lightcraft";
 
@@ -20,7 +20,7 @@ pub const LINKS: &[(&str, &str, &str)] =
     &[("app.help", "LightCraft Help", HELP), ("app.github", "LightCraft on GitHub", GITHUB), ("app.feedback", "Send Feedback…", FEEDBACK)];
 
 /// Where feedback and bug reports go.
-pub const FEEDBACK: &str = "https://github.com/FotoFieber/lightcraft/issues/new";
+pub const FEEDBACK: &str = "https://github.com/FotoFieber/lightcraft-filmscan/issues/new";
 
 /// The URL behind a link command id.
 pub fn url_of(cmd: &str) -> Option<&'static str> {
@@ -45,7 +45,7 @@ mod tests {
             assert!(!label.is_empty());
             assert_eq!(url_of(id), Some(*url));
         }
-        assert!(GITHUB.ends_with(&format!("/FotoFieber/{APP}")));
+        assert!(GITHUB.ends_with(&format!("/FotoFieber/{APP}-filmscan")));
         assert!(UPSTREAM.ends_with(&format!("/storytold/{APP}")));
         assert!(FEEDBACK.starts_with(GITHUB), "bug reports about this build go to its own repository");
         for (id, label, url) in LINKS {

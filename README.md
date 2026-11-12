@@ -1,12 +1,12 @@
 > [!IMPORTANT]
-> **This is a modified LightCraft: the FotoFieber Convert Negative build.** It is **not an official release** and
+> **This is LightCraft Film Scan, a modified LightCraft by FotoFieber.** It is **not an official release** and
 > is not made or endorsed by the ArtCraft team. It is LightCraft (by the ArtCraft team and the LightCraft
 > contributors, [storytold/lightcraft](https://github.com/storytold/lightcraft)) plus **Convert Negative**: film
 > negative and slide scans to positives, **Zap!** (find the frame on a camera scan, straighten, crop and measure the
 > film base in one step) and a **roll mode** that measures several frames together.
 >
 > - **Download:** a `.deb` for Debian, Ubuntu, Mint, Zorin and others (x86_64, glibc ≥ 2.35) on the
->   [releases page](https://github.com/FotoFieber/lightcraft/releases); each release names the upstream version it
+>   [releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases); each release names the upstream version it
 >   is based on and lists every change, commit by commit.
 > - **Where the changes come from:** Convert Negative part 1/4 is upstream
 >   ([#2490](https://github.com/storytold/lightcraft/pull/2490)); parts 2–4 are the open upstream pull requests
@@ -16,7 +16,7 @@
 >   menu, roll mode, the German texts and the fixes that keep it all working on current LightCraft are this fork's
 >   own. The roll mode and Zap!'s film base search take ideas (not code) from
 >   [#3623](https://github.com/storytold/lightcraft/pull/3623) by [@mcalapurge](https://github.com/mcalapurge).
-> - **Report problems with this build** [here](https://github.com/FotoFieber/lightcraft/issues), not upstream.
+> - **Report problems with this build** [here](https://github.com/FotoFieber/lightcraft-filmscan/issues), not upstream.
 > - As the ArtCraft brand terms ask of a modified version, the ArtCraft logos are removed from this fork and the
 >   app. Everything below describes LightCraft as the ArtCraft team publishes it.
 
@@ -48,7 +48,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/FotoFieber/lightcraft/releases"><b>This build's releases</b></a> ·
+  <a href="https://github.com/FotoFieber/lightcraft-filmscan/releases"><b>This build's releases</b></a> ·
   <a href="https://github.com/storytold/lightcraft"><b>The original LightCraft</b></a>
 </p>
 
@@ -93,7 +93,7 @@ Camera and scanner scans of film become positives inside LightCraft, non-destruc
 - The **Film Scan** panel (also in the tool strip) holds the film stock, film base and gray point pickers, exposure,
   brightness, contrast, temperature, tint, saturation and, in Advanced, tone, colour and white balance models.
 
-Screenshots are on each [release page](https://github.com/FotoFieber/lightcraft/releases).
+Screenshots are on each [release page](https://github.com/FotoFieber/lightcraft-filmscan/releases).
 
 ## Edit like you mean it
 
@@ -416,7 +416,7 @@ LightCraft is young and moving fast: **alpha**. **Where we honestly stand** (det
 Workspace builds, including the desktop, web and CLI applications, require Rust 1.95 or newer.
 
 ```sh
-git clone -b fotofieber/convert-negative https://github.com/FotoFieber/lightcraft && cd lightcraft
+git clone https://github.com/FotoFieber/lightcraft-filmscan && cd lightcraft-filmscan
 cargo run --release -p lightcraft                       # opens your library (~/Pictures/LightCraft Library; a new one starts with demo photos)
 cargo run --release -p lightcraft -- ~/Pictures/trip    # import your photos (folders are scanned, duplicates skipped)
 cargo run --release -p lightcraft -- --memory           # a throwaway in-memory demo session (writes nothing)
@@ -543,9 +543,9 @@ The web build needs the `wasm32-unknown-unknown` target and the matching `wasm-b
 text has glyphs). The Nix package is community-maintained and has not been tested with this build:
 
 ```sh
-nix run 'github:FotoFieber/lightcraft?ref=fotofieber/convert-negative'      # the desktop app
-nix build 'github:FotoFieber/lightcraft?ref=fotofieber/convert-negative'    # → ./result/bin/{lightcraft,lightcraft-cli}
-nix develop 'github:FotoFieber/lightcraft?ref=fotofieber/convert-negative'  # rust toolchain + native deps + fonts
+nix run 'github:FotoFieber/lightcraft-filmscan'  # the desktop app
+nix build 'github:FotoFieber/lightcraft-filmscan'  # → ./result/bin/{lightcraft,lightcraft-cli}
+nix develop 'github:FotoFieber/lightcraft-filmscan'  # rust toolchain + native deps + fonts
 ```
 
 On NixOS, run a `cargo` build from `nix develop`: outside it the app can't find `libvulkan.so.1`, finds no GPU and
@@ -555,7 +555,7 @@ In a flake configuration (NixOS, home-manager, nix-darwin):
 
 ```nix
 # flake.nix
-inputs.lightcraft.url = "github:FotoFieber/lightcraft?ref=fotofieber/convert-negative";
+inputs.lightcraft.url = "github:FotoFieber/lightcraft-filmscan";
 # optional: build against your own nixpkgs instead of the one LightCraft pins
 # inputs.lightcraft.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -596,26 +596,28 @@ Humans and agents follow the same rules, so read [AGENTS.md](AGENTS.md) first. T
 
 Changes to LightCraft itself belong in [the original repository](https://github.com/storytold/lightcraft), where
 this build's Convert Negative parts are open as pull requests too. Problems and ideas for Convert Negative, Zap! and
-the roll mode in this build go to [its issues](https://github.com/FotoFieber/lightcraft/issues).
+the roll mode in this build go to [its issues](https://github.com/FotoFieber/lightcraft-filmscan/issues).
 
 <br>
 
 ## Downloads
 
-This build ships one binary: a **`.deb` package for x86_64 Linux**, on the
-[releases page](https://github.com/FotoFieber/lightcraft/releases) (the [latest release](https://github.com/FotoFieber/lightcraft/releases/latest)
+LightCraft Film Scan ships one binary: a **`.deb` package for x86_64 Linux**, on the
+[releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases) (the [latest release](https://github.com/FotoFieber/lightcraft-filmscan/releases/latest)
 is the newest). Each release names the LightCraft version it is based on.
 
 | File | For |
 |---|---|
-| `lightcraft-<ver>+convert-negative-linux-x86_64.deb` | Debian 12+, Ubuntu 22.04+, Linux Mint 21+, Zorin OS 17+, Pop!_OS and other Debian-based distributions on x86_64 (glibc 2.35 or newer) |
+| `lightcraft-filmscan-<ver>-linux-x86_64.deb` | Debian 12+, Ubuntu 22.04+, Linux Mint 21+, Zorin OS 17+, Pop!_OS and other Debian-based distributions on x86_64 (glibc 2.35 or newer) |
 | `SHA256SUMS.txt` | the checksum of the `.deb` |
-| `convert-negative-patches-<upstream-ver>.tar.gz` | every change against the upstream version, as `git format-patch` files |
+| `lightcraft-filmscan-<ver>-vs-<upstream-ver>.diff` | the whole difference to the upstream version as one unified diff |
+| `lightcraft-filmscan-patches-<upstream-ver>.tar.gz` | the same changes commit by commit, as `git format-patch` files |
 | Source code (zip / tar.gz) | the full source of the release |
 
-Install it with `sudo apt install ./lightcraft-<ver>+convert-negative-linux-x86_64.deb`. The package is called
-`lightcraft`, like the official one, and replaces it; a newer official release installs over it again (without
-Convert Negative). Help ▸ Check for Updates reports official releases.
+Install it with `sudo apt install ./lightcraft-filmscan-<ver>-linux-x86_64.deb`. The package is called
+`lightcraft-filmscan` and replaces the official `lightcraft` package, since both install the same program; to go
+back, install the official package again. The app itself is still called LightCraft, and Help ▸ Check for Updates
+reports official releases.
 
 On other systems (Windows, macOS, other Linux distributions, FreeBSD, the web) build this branch from source, see
 [Quick start](#quick-start). The official LightCraft builds for all of them, without Convert Negative, are on the
@@ -633,7 +635,7 @@ in [the original README](https://github.com/storytold/lightcraft#the-crafting-ap
 
 The original LightCraft's community meets on the ArtCraft team's channels, linked from
 [storytold/lightcraft](https://github.com/storytold/lightcraft). Questions about this build go to its
-[issues](https://github.com/FotoFieber/lightcraft/issues).
+[issues](https://github.com/FotoFieber/lightcraft-filmscan/issues).
 
 ## License and credits
 

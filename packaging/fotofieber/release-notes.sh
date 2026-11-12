@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Write the release notes of a FotoFieber Convert Negative build (Markdown, to stdout).
+# Write the release notes of LightCraft Film Scan, the FotoFieber build with Convert Negative
+# (Markdown, to stdout).
 #
 #   packaging/fotofieber/release-notes.sh v0.21.1 > dist/fotofieber/notes.md
 #
@@ -9,9 +10,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE="${1:?usage: release-notes.sh <upstream-tag>}"
-FORK=FotoFieber/lightcraft
+FORK=FotoFieber/lightcraft-filmscan
 UPSTREAM=storytold/lightcraft
-TAG="$BASE-convert-negative"
+TAG="$BASE-filmscan"
 VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' "$ROOT/Cargo.toml")"
 git -C "$ROOT" rev-parse -q --verify "$BASE^{commit}" >/dev/null || { echo "error: no tag $BASE" >&2; exit 1; }
 
@@ -78,7 +79,7 @@ if compgen -G "$ROOT/dist/fotofieber/screenshots/*.png" >/dev/null; then
 fi
 
 cat <<EOF
-LightCraft **$BASE** with **Convert Negative**: film negative scans to positives, Zap! (find the frame,
+**LightCraft Film Scan** is LightCraft **$BASE** with **Convert Negative**: film negative scans to positives, Zap! (find the frame,
 straighten, crop and measure the film base in one step) and a roll mode. Version \`$VERSION\`.
 
 This is **not an official LightCraft release**. It is based on
@@ -90,20 +91,22 @@ contributors (MIT OR Apache-2.0), plus the changes listed below. Report problems
 
 | File | For |
 |---|---|
-| \`lightcraft-$VERSION-linux-x86_64.deb\` | Debian, Ubuntu, Linux Mint, Zorin OS, Pop!_OS, ... on x86_64 with glibc ≥ 2.35 (Ubuntu 22.04 / Debian 12 or newer) |
+| \`lightcraft-filmscan-$VERSION-linux-x86_64.deb\` | Debian, Ubuntu, Linux Mint, Zorin OS, Pop!_OS, ... on x86_64 with glibc ≥ 2.35 (Ubuntu 22.04 / Debian 12 or newer) |
 | \`SHA256SUMS.txt\` | checksum of the .deb |
-| \`convert-negative-patches-$BASE.tar.gz\` | every change against $BASE as \`git format-patch\` files |
+| \`lightcraft-filmscan-$VERSION-vs-$BASE.diff\` | the whole difference to LightCraft $BASE as one unified diff (\`git apply\` on a $BASE checkout) |
+| \`lightcraft-filmscan-patches-$BASE.tar.gz\` | the same changes commit by commit, as \`git format-patch\` files |
 | Source code (zip / tar.gz) | the full source of this build, tag \`$TAG\` |
 
-Install: \`sudo apt install ./lightcraft-$VERSION-linux-x86_64.deb\`. It replaces an installed official
-\`lightcraft\` package (same name); a newer official release installs over it again and drops Convert Negative.
+Install: \`sudo apt install ./lightcraft-filmscan-$VERSION-linux-x86_64.deb\`. The package is called
+\`lightcraft-filmscan\` and replaces an installed official \`lightcraft\` package (both install \`/usr/bin/lightcraft\`);
+to go back, install the official package again. The app itself is still called LightCraft.
 Built on Ubuntu 22.04 with Rust, HEIC/HEIF support and the craft-fonts CJK faces, like the official packages.
 
 ${shots:+## Screenshots
 
 $shots}## Where the differences come from
 
-All changes: [$UPSTREAM $BASE...$FORK $TAG](https://github.com/$UPSTREAM/compare/$BASE...FotoFieber:lightcraft:$TAG).
+All changes: [$UPSTREAM $BASE...$FORK $TAG](https://github.com/$UPSTREAM/compare/$BASE...FotoFieber:lightcraft-filmscan:$TAG).
 
 ### 1. Already in upstream LightCraft
 
