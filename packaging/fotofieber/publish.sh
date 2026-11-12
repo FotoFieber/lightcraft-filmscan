@@ -48,7 +48,8 @@ git -C "$ROOT" format-patch -q --no-merges -o "$OUT/patches" "$BASE..HEAD"
 tar -C "$OUT" -czf "$PATCHES" patches
 
 git -C "$ROOT" tag -a "$TAG" -m "LightCraft Film Scan $VERSION, based on LightCraft $BASE"
-git -C "$ROOT" push "$REMOTE" "$BRANCH" "refs/tags/$TAG"
+# gh is the credential helper for this push only; the user's git config is left alone.
+git -C "$ROOT" -c credential.helper= -c credential.helper='!gh auth git-credential' push "$REMOTE" "$BRANCH" "refs/tags/$TAG"
 # The repository's front page shows this branch (and its README), not the copy of upstream's main.
 gh repo edit "$FORK" --default-branch "$BRANCH" --enable-issues
 
