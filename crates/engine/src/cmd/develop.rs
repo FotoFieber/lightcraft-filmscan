@@ -61,6 +61,8 @@ fn full_json(s: &DevelopSettings) -> Value {
     let mut v = s.to_json();
     if let Some(obj) = v.as_object_mut() {
         obj.entry("hdr").or_insert_with(|| serde_json::to_value(s.hdr).unwrap_or(Value::Null));
+        // (as HDR, Convert Negative is left out of stored JSON at its defaults)
+        obj.entry("negative").or_insert_with(|| serde_json::to_value(&s.negative).unwrap_or(Value::Null));
     }
     v
 }
@@ -750,12 +752,13 @@ pub fn specs() -> Vec<CommandSpec> {
             let info = s.source_info(id);
             let d = s.develop_of(id).unwrap_or_default();
             // Sample a small neighbourhood in the oriented source (the positive, of a negative).
-            let o = lightcraft_pipeline::negative::positive(&src, &d).oriented(d.orientation);
+            let o = src.oriented(d.orientation);
+            let positive = lightcraft_pipeline::negative::pixel_converter(&d);
             let (cx, cy) = ((x.clamp(0.0, 1.0) * o.width as f64) as isize, (y.clamp(0.0, 1.0) * o.height as f64) as isize);
             let mut acc = [0.0f32; 3];
             for dy in -2..=2 {
                 for dx in -2..=2 {
-                    let c = o.get_clamped(cx + dx, cy + dy);
+                    let c = positive(o.get_clamped(cx + dx, cy + dy));
                     for i in 0..3 {
                         acc[i] += c[i] / 25.0;
                     }

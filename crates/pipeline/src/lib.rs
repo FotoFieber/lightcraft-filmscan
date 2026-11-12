@@ -602,6 +602,7 @@ pub fn colour_noise(src: &Rgb32f, info: &SourceInfo, p: &Plan<'_>) -> Option<nrc
                 full: p.full.clone(),
                 ..*p
             };
+            negative::apply(&mut img, s);
             local_tone::apply(&mut img, info, &tile);
             local::white_balance(&mut img, info, s);
             local::apply_nr(&mut img, lum, None);
@@ -615,9 +616,17 @@ pub fn colour_noise(src: &Rgb32f, info: &SourceInfo, p: &Plan<'_>) -> Option<nrc
     Some(noise)
 }
 
-/// Whether the scene-linear stage needs work only the CPU does (the camera's local tone mapping,
-/// Convert Negative): the GPU renderer then runs [`lin_cpu`] instead of its own kernels.
+/// Whether the scene-linear stage needs work only the CPU does (defringe, spot removal, Convert Negative).
 pub fn lin_needs_cpu(s: &DevelopSettings, info: &SourceInfo) -> bool {
+    let o = &s.optics;
+    let defringe = s.section_enabled("optics") && (o.defringe_purple_amount > 0.0 || o.defringe_green_amount > 0.0);
+    defringe || !s.spots.is_empty() || lin_needs_cpu_stage(info, s)
+}
+
+/// Whether a GPU render runs the whole scene-linear stage through [`lin_cpu`]: the camera's local
+/// tone mapping and Convert Negative are CPU-only and come before the white balance, so the
+/// stages after them cannot be split between the two.
+pub fn lin_needs_cpu_stage(info: &SourceInfo, s: &DevelopSettings) -> bool {
     local_tone::enabled(info, s) || negative::enabled(s)
 }
 
@@ -625,10 +634,10 @@ pub fn lin_needs_cpu(s: &DevelopSettings, info: &SourceInfo) -> bool {
 /// scene-linear stage, in place.
 pub fn lin_cpu(img: &mut Rgb32f, info: &SourceInfo, p: &Plan<'_>) {
     let s = &*p.settings;
+    // (the negative becomes a positive before anything edits it)
+    negative::apply(img, s);
     // (before the white balance: the gain's input is the as-shot development, as in the file)
     local_tone::apply(img, info, p);
-    // (and the negative becomes a positive before anything edits it)
-    negative::apply(img, s);
     local::white_balance(img, info, s);
     optics::defringe(img, s, p.px_per_long / optics::DEFRINGE_REF_LONG);
     spots::apply(img, &s.spots, &p.frame, p.px_per_long);

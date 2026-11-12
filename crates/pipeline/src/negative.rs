@@ -26,9 +26,15 @@ fn f32x3(v: [f64; 3]) -> [f32; 3] {
     v.map(|x| x as f32)
 }
 
-/// Whether `s` converts a negative.
+/// A scan sample inside 0..1 (not a number: 0).
+fn unit(v: f32) -> f32 {
+    if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 }
+}
+
+/// Whether `s` converts a negative: switched on, and its section not switched off with its eye
+/// (`develop.sectionEnabled`), which keeps the settings for switching it on again.
 pub fn enabled(s: &DevelopSettings) -> bool {
-    s.negative.enabled
+    s.negative.enabled && s.section_enabled("negative")
 }
 
 /// The film preset `n` names (Standard for a name no preset has).
@@ -40,6 +46,8 @@ pub fn preset_of(n: &Negative) -> &'static Preset {
 /// controls when the panel is in Advanced, and the levels from the measurement (with a picked film
 /// base as black), else from the film base alone.
 pub fn params(n: &Negative) -> (Params, Analysis) {
+    // (numbers out of range or not numbers, and scan colours outside 0..1, never reach the film model)
+    let n = &n.sanitized();
     let preset = preset_of(n);
     let f = |v: f64| v as f32;
     let sliders = Sliders {
@@ -90,6 +98,7 @@ fn measurement_of(m: &NegativeMeasurement) -> Measurement {
 
 /// The converter of `n`, for linear sRGB samples.
 pub fn converter(n: &Negative) -> Converter {
+    let n = &n.sanitized();
     let (p, a) = params(n);
     let neutral = if n.advanced { n.gray.map(f32x3) } else { None };
     Converter::new(&a, &p, Encoding::Linear, neutral)
@@ -109,11 +118,28 @@ pub fn apply(img: &mut Rgb32f, s: &DevelopSettings) {
         let w = img.width;
         par_rows(&mut img.data, w, |_, row| {
             for px in row {
-                let scan = mul(&into, *px).map(|v| v.clamp(0.0, 1.0));
+                let scan = mul(&into, *px).map(unit);
                 *px = mul(&back, c.convert_with(&tables, scan));
             }
         });
     });
+}
+
+/// The conversion of one source pixel (linear Rec.2020) to the positive the pipeline sees, for a
+/// few samples (a picker): the identity while the settings convert no negative.
+pub fn pixel_converter(s: &DevelopSettings) -> impl Fn([f32; 3]) -> [f32; 3] + use<> {
+    let on = enabled(s).then(|| {
+        let c = converter(&s.negative);
+        let mut tables = Box::new(Tables::blank());
+        c.tables(&mut tables);
+        (c, tables)
+    });
+    let (into, back) = (to_srgb().to_f32(), to_rec2020().to_f32());
+    move |px| {
+        let Some((c, tables)) = &on else { return px };
+        let mul = |m: &[[f32; 3]; 3], v: [f32; 3]| m.map(|r| r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
+        mul(&back, c.convert_with(tables, mul(&into, px).map(unit)))
+    }
 }
 
 /// `src` as the rest of the pipeline sees it: converted to a positive when the settings convert a
@@ -135,7 +161,11 @@ pub fn scan_colour(rec2020: [f32; 3]) -> [f64; 3] {
 
 /// Measures `src` (linear Rec.2020, the whole scan) as a negative, leaving `border` (a fraction of
 /// each edge) out.
+///
+/// `border` is 0 to 0.45 (the film model's limit); anything else, including not a number, is an
+/// error.
 pub fn measure(src: &Rgb32f, border: f64) -> Result<NegativeMeasurement, String> {
+    check_border(border)?;
     let o = lightcraft_film::MeasureOptions { border: border as f32, ..Default::default() };
     Ok(measured(&lightcraft_film::measure::measure(&srgb_pixels(src), src.width, src.height, &o)?))
 }
@@ -149,6 +179,7 @@ pub const ROLL_SAMPLES: usize = 250_000;
 /// brighter or darker then pool alike. Add the frames' samples together and measure them with
 /// [`measure_samples`].
 pub fn sample(src: &Rgb32f, border: f64, base: Option<[f64; 3]>) -> Result<film::ValueHistogram, String> {
+    check_border(border)?;
     let o = lightcraft_film::MeasureOptions { border: border as f32, max_samples: ROLL_SAMPLES, ..Default::default() };
     let mut px = srgb_pixels(src);
     if let Some(b) = base {
@@ -165,10 +196,21 @@ pub fn measure_samples(samples: &film::ValueHistogram) -> Result<NegativeMeasure
     Ok(measured(&lightcraft_film::measure::measure_samples(samples, &lightcraft_film::MeasureOptions::default())?))
 }
 
-/// `src`'s pixels in linear sRGB, the space the film model measures in.
+/// `border` is 0 to 0.45 of each edge (the film model's limit); anything else, including not a
+/// number, is an error.
+fn check_border(border: f64) -> Result<(), String> {
+    if !border.is_finite() || !(0.0..=0.45).contains(&border) {
+        return Err(format!("the border must be between 0 and 0.45 of each edge, not {border}"));
+    }
+    Ok(())
+}
+
+/// `src`'s pixels in linear sRGB, the space the film model measures in, each channel kept to 0..1
+/// (not a number: 0).
 fn srgb_pixels(src: &Rgb32f) -> Vec<[f32; 3]> {
+    use rayon::prelude::*;
     let m = to_srgb().to_f32();
-    src.data.iter().map(|v| m.map(|r| r[0] * v[0] + r[1] * v[1] + r[2] * v[2])).collect()
+    src.data.par_iter().map(|v| m.map(|r| unit(r[0] * v[0] + r[1] * v[1] + r[2] * v[2]))).collect()
 }
 
 fn measured(m: &lightcraft_film::Measurement) -> NegativeMeasurement {
@@ -222,7 +264,9 @@ mod tests {
         let luma = |c: [f32; 3]| c[0] + c[1] + c[2];
         assert!(luma(bright) > luma(dark) + 0.3, "the denser side is the brighter one now: {dark:?} {bright:?}");
         let mid = at(w / 2);
-        assert!((mid[0] - mid[2]).abs() < 0.03, "a grey scene stays grey: {mid:?}");
+        for (a, b) in [(0, 1), (1, 2), (0, 2)] {
+            assert!((mid[a] - mid[b]).abs() < 0.03, "a grey scene stays grey: {mid:?}");
+        }
         assert!(img.data.iter().flatten().all(|v| v.is_finite()));
     }
 
@@ -240,13 +284,127 @@ mod tests {
         let mut simple = scan(w, h);
         s.negative.advanced = false;
         apply(&mut simple, &s);
-        assert_ne!(simple.data[0], img.data[0]);
+        let gap = simple.data[0].iter().zip(img.data[0]).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
+        assert!(gap > 1e-4, "{:?} {:?}", simple.data[0], img.data[0]);
+        let mid = scan(w, h).data[h / 2 * w + w / 2];
+        let mut inner = scan(w, h);
+        s.negative.advanced = true;
+        apply(&mut inner, &s);
+        assert!(inner.data[h / 2 * w + w / 2].iter().sum::<f32>() > 0.05, "the interior is not black (scan {mid:?})");
+    }
+
+    #[test]
+    fn a_picked_gray_is_gray_in_advanced_and_ignored_in_simple() {
+        let (w, h) = (60, 40);
+        let at = w * h / 2 + w / 3;
+        let raw = scan(w, h);
+        let pick = scan_colour(raw.data[at]);
+        let mut s = DevelopSettings::default();
+        s.negative.enabled = true;
+        s.negative.gray = Some(pick);
+        let spread = |c: [f32; 3]| c.iter().cloned().fold(f32::MIN, f32::max) - c.iter().cloned().fold(f32::MAX, f32::min);
+        let (mut simple, mut adv) = (raw.clone(), raw.clone());
+        apply(&mut simple, &s);
+        s.negative.advanced = true;
+        apply(&mut adv, &s);
+        assert!(spread(adv.data[at]) < 0.02, "{:?}", adv.data[at]);
+        let mut none = raw.clone();
+        s.negative.advanced = false;
+        s.negative.gray = None;
+        apply(&mut none, &s);
+        assert_eq!(simple.data, none.data, "Simple ignores the gray point");
+    }
+
+    #[test]
+    fn simple_ignores_the_advanced_choices_and_advanced_applies_them() {
+        let raw = scan(60, 40);
+        let run = |advanced: bool| {
+            let mut img = raw.clone();
+            let negative = Negative { enabled: true, advanced, tone: "linear".into(), blacks: 40.0, fade: 80.0, ..Negative::default() };
+            apply(&mut img, &DevelopSettings { negative, ..DevelopSettings::default() });
+            img
+        };
+        let plain = {
+            let mut img = raw.clone();
+            apply(&mut img, &DevelopSettings { negative: Negative { enabled: true, ..Negative::default() }, ..DevelopSettings::default() });
+            img
+        };
+        assert_eq!(run(false).data, plain.data);
+        assert_ne!(run(true).data, plain.data);
+    }
+
+    #[test]
+    fn the_sections_eye_switches_the_conversion_off_and_keeps_it() {
+        let raw = scan(30, 20);
+        let mut s = DevelopSettings { negative: Negative { enabled: true, ..Negative::default() }, ..DevelopSettings::default() };
+        assert!(enabled(&s));
+        s.disabled_sections.push("negative".into());
+        assert!(!enabled(&s), "the eye is off");
+        assert!(matches!(positive(&raw, &s), std::borrow::Cow::Borrowed(_)), "the automatic adjustments see the scan");
+        let mut img = raw.clone();
+        apply(&mut img, &s);
+        assert_eq!(img.data, raw.data, "renders show the scan");
+        assert!(!crate::lin_needs_cpu_stage(&crate::SourceInfo::default(), &s));
+        assert!(s.negative.enabled, "the conversion is kept for switching the section on again");
+    }
+
+    #[test]
+    fn an_unknown_preset_is_standard() {
+        let n = Negative { preset: "no such film".into(), ..Negative::default() };
+        assert_eq!(preset_of(&n).name, preset_of(&Negative::default()).name);
+    }
+
+    #[test]
+    fn positive_borrows_when_off_and_matches_apply_when_on() {
+        let raw = scan(30, 20);
+        assert!(matches!(positive(&raw, &DevelopSettings::default()), std::borrow::Cow::Borrowed(_)));
+        let mut s = DevelopSettings::default();
+        s.negative.enabled = true;
+        let mut applied = raw.clone();
+        apply(&mut applied, &s);
+        assert_eq!(positive(&raw, &s).data, applied.data);
+    }
+
+    #[test]
+    fn a_pixel_converts_as_the_image_does() {
+        let raw = scan(30, 20);
+        let mut s = DevelopSettings::default();
+        let off = pixel_converter(&s);
+        assert_eq!(off(raw.data[40]), raw.data[40]);
+        s.negative.enabled = true;
+        let mut img = raw.clone();
+        apply(&mut img, &s);
+        let on = pixel_converter(&s);
+        assert_eq!(on(raw.data[40]), img.data[40]);
+    }
+
+    #[test]
+    fn the_cpu_stage_runs_for_a_negative_only_when_it_is_on() {
+        let info = crate::SourceInfo::default();
+        let mut s = DevelopSettings::default();
+        assert!(!crate::lin_needs_cpu_stage(&info, &s) && !crate::lin_needs_cpu(&s, &info));
+        s.negative.enabled = true;
+        assert!(crate::lin_needs_cpu_stage(&info, &s) && crate::lin_needs_cpu(&s, &info));
+    }
+
+    #[test]
+    fn measure_rejects_a_border_that_is_not_one_and_ignores_bad_pixels() {
+        let mut img = scan(60, 40);
+        for b in [f64::NAN, -0.1, 0.5, f64::INFINITY] {
+            assert!(measure(&img, b).is_err(), "{b}");
+        }
+        img.data[100] = [f32::NAN, f32::INFINITY, -5.0];
+        let m = measure(&img, 0.12).unwrap();
+        for c in [m.base, m.black, m.white, m.balance].into_iter().flatten() {
+            assert!(c.is_finite());
+        }
     }
 
     #[test]
     fn hostile_settings_never_poison_the_image() {
         let mut img = scan(30, 20);
         img.data[3] = [f32::NAN, f32::INFINITY, -5.0];
+        img.data[4] = [f32::NEG_INFINITY, f32::NAN, 1e30];
         let negative = Negative {
             enabled: true,
             advanced: true,
@@ -254,10 +412,24 @@ mod tests {
             tone: "nope".into(),
             exposure: f64::NAN,
             range: f64::INFINITY,
+            brightness: 1e300,
+            contrast: f64::NEG_INFINITY,
+            temp: f64::NAN,
+            tint: -1e9,
+            saturation: f64::INFINITY,
+            highlights: f64::NAN,
+            shadows: 1e9,
+            whites: f64::NAN,
+            blacks: -1e9,
+            fade: f64::INFINITY,
+            glow: f64::NAN,
+            wb: "nope".into(),
+            look: "nope".into(),
             base: Some([f64::NAN, -1.0, 1e30]),
-            gray: Some([0.0; 3]),
+            gray: Some([f64::NAN, 0.0, 9.0]),
             measured: Some(NegativeMeasurement { base: [0.0; 3], black: [f64::NAN; 3], white: [1.0; 3], balance: [f64::INFINITY; 3] }),
-            ..Negative::default()
+            roll: Some(u32::MAX),
+            zap_crop: None,
         };
         apply(&mut img, &DevelopSettings { negative, ..DevelopSettings::default() });
         assert!(img.data.iter().flatten().all(|v| v.is_finite()), "{:?}", &img.data[..6]);

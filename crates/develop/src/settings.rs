@@ -304,14 +304,55 @@ impl Default for Negative {
     }
 }
 
+impl Default for NegativeMeasurement {
+    fn default() -> Self {
+        Self { base: [0.0; 3], black: [0.0; 3], white: [0.0; 3], balance: [1.0; 3] }
+    }
+}
+
 impl Negative {
     pub fn is_default(&self) -> bool {
         *self == Negative::default()
     }
+
+    /// `self` with every number finite and inside its control's range, and every scan colour in
+    /// 0..1 (a value that is not a number becomes the default, as [`controls::ControlSpec::clamp`]
+    /// does). Settings read from a file or a client are untrusted until they pass here.
+    pub fn sanitized(&self) -> Negative {
+        let fit = |v: f64, lo: f64, hi: f64, d: f64| if v.is_finite() { v.clamp(lo, hi) } else { d };
+        let unit = |c: [f64; 3]| c.map(|v| fit(v, 0.0, 1.0, 0.0));
+        let mut n = self.clone();
+        n.exposure = fit(n.exposure, -5.0, 5.0, 0.0);
+        for v in [
+            &mut n.brightness,
+            &mut n.contrast,
+            &mut n.temp,
+            &mut n.tint,
+            &mut n.saturation,
+            &mut n.highlights,
+            &mut n.shadows,
+            &mut n.whites,
+            &mut n.blacks,
+        ] {
+            *v = fit(*v, -50.0, 50.0, 0.0);
+        }
+        n.fade = fit(n.fade, -100.0, 100.0, 0.0);
+        n.glow = fit(n.glow, -100.0, 100.0, 0.0);
+        n.range = fit(n.range, 1.0, 10.0, 3.0);
+        n.base = n.base.map(unit);
+        n.gray = n.gray.map(unit);
+        n.measured = n.measured.map(|m| NegativeMeasurement {
+            base: unit(m.base),
+            black: unit(m.black),
+            white: unit(m.white),
+            balance: m.balance.map(|v| fit(v, 0.4, 2.5, 1.0)),
+        });
+        n
+    }
 }
 
 /// A scan's measurement for [`Negative`]: scan values in linear sRGB, 0..1, per channel.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NegativeMeasurement {
     /// The film base (unexposed film): scene black.
