@@ -56,7 +56,7 @@ if ! command -v rustup >/dev/null; then
   curl --proto '=https' -sSf https://sh.rustup.rs | sh -s -- -y -q --no-modify-path --profile minimal \
     --default-toolchain "$RUST_TOOLCHAIN"
 fi
-rustup toolchain install -q --profile minimal "$RUST_TOOLCHAIN"
+rustup toolchain install --profile minimal "$RUST_TOOLCHAIN"
 rustup default "$RUST_TOOLCHAIN"
 if [[ ! -x "$C/bin/nfpm-$NFPM_VERSION" ]]; then
   mkdir -p "$C/bin"
