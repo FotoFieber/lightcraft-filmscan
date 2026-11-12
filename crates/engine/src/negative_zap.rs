@@ -6,6 +6,7 @@
 use lightcraft_catalog::{Photo, PhotoId};
 use lightcraft_develop::{DevelopSettings, NegativeMeasurement};
 use lightcraft_geom::{CropGeometry, MIN_CROP_FRACTION, Rect};
+use lightcraft_pipeline::negative::film::ValueHistogram;
 use lightcraft_pipeline::negative_frame::{self, Frame, Margin};
 use lightcraft_raster::Rgb32f;
 use serde_json::{Value, json};
@@ -46,11 +47,13 @@ pub struct Options {
     pub ratio: Option<f64>,
     pub sprockets: Sprockets,
     pub film: Film,
+    /// The photos are one roll: their negatives are measured together ([`pool`]).
+    pub roll: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative }
+        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative, roll: false }
     }
 }
 
@@ -79,7 +82,12 @@ impl Options {
             Some(Value::String(v)) if v == "slide" => Film::Slide,
             Some(v) => return Err(format!("`film` must be negative or slide, not {v}")),
         };
-        Ok(Self { margin, ratio, sprockets, film })
+        let roll = match p.get("roll") {
+            None | Some(Value::Null) => false,
+            Some(Value::Bool(b)) => *b,
+            Some(v) => return Err(format!("`roll` must be true or false, not {v}")),
+        };
+        Ok(Self { margin, ratio, sprockets, film, roll })
     }
 }
 
@@ -89,6 +97,17 @@ pub struct Zapped {
     pub settings: DevelopSettings,
     /// `{angle, rect, base, sprockets, sidesFound}`.
     pub report: Value,
+    /// For a roll ([`Options::roll`]): the samples its measurement read, for [`pool`].
+    pub samples: Option<Box<RollSamples>>,
+}
+
+/// One frame's share of a roll's measurement.
+#[derive(Clone, Debug)]
+pub struct RollSamples {
+    /// The picture's samples, relative to `base` when there is one.
+    pub samples: ValueHistogram,
+    /// The film base its rebate showed (linear sRGB), `None` when none showed.
+    pub base: Option<[f64; 3]>,
 }
 
 /// The photo's size with its orientation applied: the frame its crop is normalized to.
@@ -129,14 +148,22 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
     if o.film == Film::Slide {
         return slide(before, found, dims, o, (ow, oh));
     }
+    // a roll's frames keep what their measurement read, to be measured together
+    let samples = |r: Rect, border: f64, base: Option<[f64; 3]>| -> Result<Option<Box<RollSamples>>, String> {
+        if !o.roll {
+            return Ok(None);
+        }
+        Ok(Some(Box::new(RollSamples { samples: sample_in(&oriented, r, border, base)?, base })))
+    };
     if own_crop(before) {
         let geometry = before.crop.geometry;
-        let (measured, frame) = match &found {
-            Ok(f) => (measure_in(&oriented, picture(f), 0.0)?, Some(f)),
-            Err(_) => (measure_in(&oriented, geometry.rect, OWN_CROP_BORDER)?, None),
+        let (r, border, frame) = match &found {
+            Ok(f) => (picture(f), 0.0, Some(f)),
+            Err(_) => (geometry.rect, OWN_CROP_BORDER, None),
         };
-        let settings = converted(before, measured, frame.and_then(|f| f.base));
-        return Ok(Zapped { settings, report: report(&geometry, frame, true) });
+        let settings = converted(before, measure_in(&oriented, r, border)?, frame.and_then(|f| f.base));
+        let samples = samples(r, border, frame.and_then(|f| f.base))?;
+        return Ok(Zapped { settings, report: report(&geometry, frame, true), samples });
     }
     let frame = found?;
     let geometry = crop_of(&frame, dims, o, (ow, oh))?;
@@ -144,7 +171,7 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
     let mut settings = converted(before, measured, frame.base);
     settings.crop.geometry = geometry;
     settings.negative.zap_crop = Some(geometry);
-    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false) })
+    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples: samples(picture(&frame), 0.0, frame.base)? })
 }
 
 /// The crop Zap! sets for `frame` on a scan of oriented size `dims` (analysed at `analysed`).
@@ -167,14 +194,14 @@ fn crop_of(frame: &Frame, dims: (f64, f64), o: Options, analysed: (f64, f64)) ->
 fn slide(before: &DevelopSettings, found: Result<Frame, String>, dims: (f64, f64), o: Options, analysed: (f64, f64)) -> Result<Zapped, String> {
     if own_crop(before) {
         let geometry = before.crop.geometry;
-        return Ok(Zapped { settings: before.clone(), report: report(&geometry, found.as_ref().ok(), true) });
+        return Ok(Zapped { settings: before.clone(), report: report(&geometry, found.as_ref().ok(), true), samples: None });
     }
     let frame = found?;
     let geometry = crop_of(&frame, dims, o, analysed)?;
     let mut settings = before.clone();
     settings.crop.geometry = geometry;
     settings.negative.zap_crop = Some(geometry);
-    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false) })
+    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples: None })
 }
 
 /// `before` converted with `measured` and, when the rebate showed, the film base.
@@ -183,6 +210,8 @@ fn converted(before: &DevelopSettings, measured: NegativeMeasurement, base: Opti
     let n = &mut settings.negative;
     n.enabled = true;
     n.measured = Some(measured);
+    // measured on its own, out of any roll it was in
+    n.roll = None;
     if let Some(b) = base {
         // the picked base only counts in Advanced
         n.advanced = true;
@@ -208,11 +237,138 @@ fn report(geometry: &CropGeometry, frame: Option<&Frame>, kept: bool) -> Value {
 
 /// Measures the oriented scan `o` inside `r` (normalized), `border` in from each edge.
 pub fn measure_in(o: &Rgb32f, r: Rect, border: f64) -> Result<NegativeMeasurement, String> {
+    lightcraft_pipeline::negative::measure(&framed(o, r), border)
+}
+
+/// The samples [`measure_in`] reads, at most a roll frame's share, relative to `base`.
+fn sample_in(o: &Rgb32f, r: Rect, border: f64, base: Option<[f64; 3]>) -> Result<ValueHistogram, String> {
+    lightcraft_pipeline::negative::sample(&framed(o, r), border, base)
+}
+
+/// The oriented scan `o` inside `r` (normalized; all of it when `r` holds no pixel).
+fn framed(o: &Rgb32f, r: Rect) -> Rgb32f {
     let (w, h) = (o.width as f64, o.height as f64);
     let at = |v: f64, n: f64| if v.is_finite() { (v.clamp(0.0, 1.0) * n).round() as usize } else { 0 };
     let (x0, y0, x1, y1) = (at(r.x0, w), at(r.y0, h), at(r.x1, w), at(r.y1, h));
-    let framed = if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o.clone() };
-    lightcraft_pipeline::negative::measure(&framed, border)
+    if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o.clone() }
+}
+
+/// Film bases whose colour differs by more than this (in any channel, as a ratio, after their
+/// brightness is set aside) are another film or another light: such a frame is measured on its own.
+pub const ROLL_BASE_TOLERANCE: f64 = 1.15;
+
+/// What [`pool`] did.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Roll {
+    /// The frames measured together.
+    pub frames: Vec<PhotoId>,
+    /// How many of them showed their film base on the rebate.
+    pub bases: usize,
+    /// Frames whose film base has another colour than the roll's ([`ROLL_BASE_TOLERANCE`]): left
+    /// as Zap! measured them, on their own.
+    pub apart: Vec<PhotoId>,
+}
+
+impl Roll {
+    pub fn json(&self) -> Value {
+        json!({
+            "frames": self.frames.iter().map(|id| id.0).collect::<Vec<_>>(),
+            "bases": self.bases,
+            "apart": self.apart.iter().map(|id| id.0).collect::<Vec<_>>(),
+        })
+    }
+}
+
+/// A film base's colour without its brightness: each channel's log over the three's mean.
+fn base_colour(b: [f64; 3]) -> [f64; 3] {
+    let l = b.map(|v| v.max(1e-6).ln());
+    let mean = (l[0] + l[1] + l[2]) / 3.0;
+    l.map(|v| v - mean)
+}
+
+/// Measures the zapped negatives of one roll together, as a lab prints a roll: the levels and the
+/// balance come from all their pictures at once, so one dark or one snowy frame doesn't set them.
+/// Each frame's pictures are read relative to its own film base, so frames scanned brighter or
+/// darker pool alike, and each frame gets the roll's measurement on its own base (a frame whose
+/// rebate didn't show takes the median base). Each keeps its own crop and sliders. Frames without
+/// samples (slides, or zapped without [`Options::roll`]) stay as they are; with fewer than two
+/// frames to pool, nothing changes (`None`).
+pub fn pool(zapped: &mut [(PhotoId, Zapped)]) -> Result<Option<Roll>, String> {
+    fn rolled(z: &Zapped) -> Option<&RollSamples> {
+        z.samples.as_deref().filter(|_| z.settings.negative.enabled)
+    }
+    let bases: Vec<[f64; 3]> = zapped.iter().filter_map(|(_, z)| rolled(z).and_then(|r| r.base)).collect();
+    let median = median_base(&bases);
+    let tolerance = ROLL_BASE_TOLERANCE.ln();
+    let apart_from_roll = |b: Option<[f64; 3]>| match (median, b) {
+        (Some(m), Some(b)) => {
+            let (m, b) = (base_colour(m), base_colour(b));
+            (0..3).any(|c| (b[c] - m[c]).abs() > tolerance)
+        }
+        _ => false,
+    };
+    let mut roll = Roll::default();
+    let mut samples = ValueHistogram::new();
+    for (id, z) in zapped.iter() {
+        let Some(r) = rolled(z) else { continue };
+        if apart_from_roll(r.base) {
+            roll.apart.push(*id);
+            continue;
+        }
+        // with bases to go by, only samples relative to one pool (a frame without takes the median)
+        if median.is_none() || r.base.is_some() {
+            samples.add(&r.samples);
+        }
+        roll.frames.push(*id);
+        roll.bases += usize::from(r.base.is_some());
+    }
+    if roll.frames.len() < 2 {
+        return Ok(None);
+    }
+    let pooled = lightcraft_pipeline::negative::measure_samples(&samples)?;
+    let frames = u32::try_from(roll.frames.len()).unwrap_or(u32::MAX);
+    for (id, z) in zapped.iter_mut() {
+        if !roll.frames.contains(id) {
+            continue;
+        }
+        let own = z.samples.as_deref().and_then(|r| r.base).or(median);
+        let n = &mut z.settings.negative;
+        n.measured = Some(match own {
+            // the roll's levels on this frame's base
+            Some(b) => {
+                let on = |v: [f64; 3]| [v[0] * b[0], v[1] * b[1], v[2] * b[2]];
+                NegativeMeasurement { base: on(pooled.base), black: on(pooled.black), white: on(pooled.white), balance: pooled.balance }
+            }
+            None => pooled,
+        });
+        if let Some(b) = own {
+            // the picked base only counts in Advanced
+            n.advanced = true;
+            n.base = Some(b);
+        }
+        n.roll = Some(frames);
+    }
+    Ok(Some(roll))
+}
+
+/// The per-channel median of `bases` (in log, robust to one odd frame); `None` for none.
+fn median_base(bases: &[[f64; 3]]) -> Option<[f64; 3]> {
+    if bases.is_empty() {
+        return None;
+    }
+    let mut out = [0.0; 3];
+    for (c, o) in out.iter_mut().enumerate() {
+        let mut v: Vec<f64> = bases.iter().map(|b| b[c].max(1e-6).ln()).filter(|v| v.is_finite()).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_by(f64::total_cmp);
+        // the middle one, or the mean of the middle two
+        let (lo, hi) = ((v.len() - 1) / 2, v.len() / 2);
+        let m = (v.get(lo).copied().unwrap_or(0.0) + v.get(hi).copied().unwrap_or(0.0)) / 2.0;
+        *o = m.exp();
+    }
+    Some(out)
 }
 
 /// What a run off the session needs of one photo: read on the UI thread, run on a worker.

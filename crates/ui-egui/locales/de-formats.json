@@ -329,5 +329,8 @@
   "File › Export… · File › Print… ({keys}).": "Datei › Exportieren… · Datei › Drucken… ({keys}).",
   "Zap!: {changed} photo(s)": "Zap!: {changed} Foto(s) bearbeitet",
   "Zap!: {changed} photo(s), no frame found on {left}": "Zap!: {changed} Foto(s) bearbeitet, bei {left} kein Bild gefunden",
-  "Zap!: no film frame found on any of the photos{why}": "Zap!: auf keinem der Fotos ein Filmbild gefunden{why}"
+  "Zap!: no film frame found on any of the photos{why}": "Zap!: auf keinem der Fotos ein Filmbild gefunden{why}",
+  "{frames} measured as one roll, the film base from {bases}": "{frames} als eine Rolle gemessen, Filmbasis aus {bases}",
+  "{apart} with another film base measured on their own": "{apart} mit anderer Filmbasis einzeln gemessen",
+  "Roll · {frames} photos": "Rolle · {frames} Fotos"
 }

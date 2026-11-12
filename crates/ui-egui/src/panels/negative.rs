@@ -48,6 +48,8 @@ pub(crate) const MARGINS: [(&str, &str); 4] =
     [("inside", "Inside the Frame"), ("edge", "To the Edge"), ("border", "With Border"), ("film", "Whole Film")];
 /// Zap!'s choice of the sprocket holes, as `develop.negativeZap` takes it.
 pub(crate) const SPROCKETS: [(&str, &str); 2] = [("remove", "Remove Sprocket Holes"), ("keep", "Keep Sprocket Holes")];
+/// Zap!… on several photos: each measured on its own, or all together as one roll.
+pub(crate) const ROLLS: [(&str, &str); 2] = [("single", "Each Photo on Its Own"), ("roll", "As One Roll")];
 /// What was scanned, as `develop.negativeZap` takes it.
 pub(crate) const FILMS: [(&str, &str); 2] = [("negative", "Negative"), ("slide", "Slide")];
 const WBS: [(&str, &str); 4] = [("as_is", "As Shot"), ("warm", "Warm"), ("cool", "Cool"), ("tungsten_film", "Tungsten Film")];
@@ -174,6 +176,27 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     });
 }
 
+/// A frame Zap! measured with its roll: the roll's size, and Release to measure the photo on its
+/// own again (Zap! on it alone, with the panel's choices).
+fn roll_row(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, frames: u32) {
+    let t = Tokens::get(ui.ctx());
+    padded(ui, |ui| {
+        ui.horizontal(|ui| {
+            let text = crate::i18n::tr_format!("Roll · {frames} photos", frames = frames);
+            ui.label(egui::RichText::new(text).font(t.font(13.0)).color(t.text_dim))
+                .on_hover_text(tr("The film base and levels are the roll's, measured on all its photos together; the sliders are this photo's own"));
+            let tip = "Measure this photo on its own again";
+            if text_button(ui, "negative-rollRelease", tr("Release"), false).on_hover_text(tr(tip)).clicked() {
+                let u = &app.ui;
+                let p = json!({"ids": [id.0], "margin": u.negative_zap_margin, "format": u.negative_zap_format, "sprockets": u.negative_zap_sprockets, "film": "negative"});
+                if let Err(e) = app.run("develop.negativeZap", p) {
+                    app.toast(ui.ctx(), e);
+                }
+            }
+        });
+    });
+}
+
 pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     let d = app.session.develop_of(id).unwrap_or_default();
     let n = d.negative.clone();
@@ -202,6 +225,9 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
             ui.label(egui::RichText::new(tr("Switch on to render this scan of a film negative as a positive.")).color(t.text_dim));
         });
         return;
+    }
+    if let Some(frames) = n.roll {
+        roll_row(app, ui, id, frames);
     }
     let preset = lightcraft_pipeline::negative::preset_of(&n);
     padded(ui, |ui| {

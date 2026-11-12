@@ -3594,5 +3594,11 @@
   "Remove Sprocket Holes": "Perforation entfernen",
   "Keep Sprocket Holes": "Perforation behalten",
   "Whether the crop keeps 35 mm film's sprocket holes": "Ob der Zuschnitt die Perforation des Kleinbildfilms behält",
-  "A slide is only cropped, never converted": "Ein Dia wird nur zugeschnitten, nie umgewandelt"
+  "A slide is only cropped, never converted": "Ein Dia wird nur zugeschnitten, nie umgewandelt",
+  "Each Photo on Its Own": "Jedes Foto einzeln",
+  "As One Roll": "Als eine Rolle",
+  "As one roll: the film base and levels are measured on all the photos together, so they match; a photo scanned differently is measured on its own": "Als eine Rolle: Filmbasis und Tonwerte werden auf allen Fotos gemeinsam gemessen, damit sie zusammenpassen; ein anders gescanntes Foto wird einzeln gemessen",
+  "The film base and levels are the roll's, measured on all its photos together; the sliders are this photo's own": "Filmbasis und Tonwerte gehören der Rolle und sind auf all ihren Fotos gemeinsam gemessen; die Regler gehören diesem Foto",
+  "convert negative|Release": "Lösen",
+  "Measure this photo on its own again": "Dieses Foto wieder einzeln messen"
 }

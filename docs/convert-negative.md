@@ -31,8 +31,15 @@ saved in a preset and undone, and previews and exports convert with the same num
 4. **Measure Again** after cropping to the frame (or when the first measurement took in the holder).
    **Done** closes the panel. Everything else in the Edit panel then edits the positive.
 
-To convert a roll, convert one frame, then **Copy Edit Settings** with **Film Scan** ticked and
-paste or sync to the rest: they convert with that frame's measurement, as a lab scans a roll.
+To convert a roll, select its frames and choose **Zap!…** with **Color: As One Roll**: the frames are
+measured together, as a lab prints a roll. The film base is the median of the bases their rebates
+show, and the levels and balance come from all their pictures at once, so one dark or snowy frame
+doesn't set them; each frame keeps its own crop and sliders. A frame whose film base is more than
+15 % off (another film, or scanned differently) is measured on its own, and the message after the
+run says how many. The panel of a frame in a roll shows **Roll · N photos**; **Release** (or
+Measure Again, or picking a film base) measures that frame on its own again. Otherwise convert one
+frame, then **Copy Edit Settings** with **Film Scan** ticked and paste or sync to the rest: they
+convert with that frame's measurement.
 
 ## How it works
 
@@ -55,7 +62,7 @@ are their makers' trademarks and only say which stock a recipe takes after.
 | Command | What it does |
 |---|---|
 | `photo.convertNegative` | Photo ▸ Film Scan ▸ Convert Without Cropping: switches the conversion on and opens the panel |
-| `dialog.negativeZap` | Photo ▸ Film Scan ▸ Zap!…: asks for the film, format, sprocket holes and edge, then runs `develop.negativeZap` on the selection |
+| `dialog.negativeZap` | Photo ▸ Film Scan ▸ Zap!…: asks for the film, format, sprocket holes and edge (and, for several photos, each on its own or as one roll), then runs `develop.negativeZap` on the selection |
 | `develop.negative` | `{on?, advanced?, preset?, tone?, look?, wb?, measure?, border?, clearBase?, clearGray?}` |
 | `develop.negativePick` | `{x, y, target?: base\|gray}`: the film base or gray point from the scan at a normalized point |
 | `develop.set` | the sliders: `negative.exposure`, `.brightness`, `.contrast`, `.temp`, `.tint`, `.saturation`, `.highlights`, `.shadows`, `.whites`, `.blacks`, `.fade`, `.glow`, `.range` |

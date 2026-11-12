@@ -266,6 +266,11 @@ pub struct Negative {
     /// own, which a later Zap! keeps.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zap_crop: Option<CropGeometry>,
+    /// Zap! measured this photo as one frame of a roll of this many: [`Negative::measured`] and
+    /// [`Negative::base`] are the roll's, shared with its other frames. Measuring again, picking a
+    /// base or zapping the photo alone measures it on its own again.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roll: Option<u32>,
 }
 
 impl Default for Negative {
@@ -294,6 +299,7 @@ impl Default for Negative {
             gray: None,
             measured: None,
             zap_crop: None,
+            roll: None,
         }
     }
 }

@@ -69,18 +69,21 @@ fn zap(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad(c, format!("no such photo: {}", id.0)));
     }
     let many = ids.len() > 1;
-    let mut ops = Vec::new();
+    let mut zapped = Vec::new();
     let mut failed: Vec<(PhotoId, String)> = Vec::new();
-    let mut first: Option<(PhotoId, Value)> = None;
     for id in ids {
         match zap_photo(s, id, o) {
-            Ok(z) => {
-                if let Some(op) = s.develop_op(id, z.settings, negative_zap::LABEL) {
-                    first.get_or_insert((id, z.report));
-                    ops.push(op);
-                }
-            }
+            Ok(z) => zapped.push((id, z)),
             Err(e) => failed.push((id, e)),
+        }
+    }
+    let roll = if o.roll { negative_zap::pool(&mut zapped).map_err(|e| bad(c, e))? } else { None };
+    let mut ops = Vec::new();
+    let mut first: Option<(PhotoId, Value)> = None;
+    for (id, z) in zapped {
+        if let Some(op) = s.develop_op(id, z.settings, negative_zap::LABEL) {
+            first.get_or_insert((id, z.report));
+            ops.push(op);
         }
     }
     let Some((id, report)) = first else {
@@ -98,6 +101,7 @@ fn zap(s: &mut Session, p: &Value) -> Result<Value> {
     if let (Some(o), Value::Object(sum)) = (out.as_object_mut(), negative_zap::summary(changed, &failed)) {
         o.insert("zap".into(), report);
         o.insert("id".into(), json!(id.0));
+        o.insert("roll".into(), roll.map_or(Value::Null, |r| r.json()));
         o.extend(sum);
     }
     Ok(out)
@@ -162,6 +166,8 @@ pub fn specs() -> Vec<CommandSpec> {
                     }
                     if measured.is_some() {
                         n.measured = measured;
+                        // measured on its own, out of any roll it was in
+                        n.roll = None;
                     }
                     out = state(n);
                     Ok(())
@@ -219,6 +225,8 @@ pub fn specs() -> Vec<CommandSpec> {
                         n.gray = Some(colour);
                     } else {
                         n.base = Some(colour);
+                        // a base of its own: out of any roll it was in
+                        n.roll = None;
                     }
                     out = state(n);
                     Ok(())
@@ -233,7 +241,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 "Zap!",
                 ["Photo"],
                 None,
-                "{ids?, margin?: inside|edge|border|film (default inside; film: the whole film inside the holder, rebate and sprocket holes and all, as for 35 mm across a medium-format gate), format?: auto|35mm|half|xpan|645|66|67|68|69|612|617 (default auto: no aspect assumed), sprockets?: remove|keep (default remove), film?: negative|slide (default negative)} — on each target photo (`ids`, else the selection), finds the picture on the scan (the holder, the film's rebate and its sprocket holes left out), straightens and crops to it (sprockets keep: the long sides of 35 mm by the sprocket holes, just outside whole ones, just inside ones the holder cuts), and for a negative takes the film base from the rebate and measures the picture (a slide is only cropped); one undo step for all. A crop the user set (not Zap!'s last one) stays; then only the base and the measurement are taken. A photo with no frame is left out → the first zapped photo's conversion with `zap` (what was found), `id`, `changed` and `failed` [{id, error}]; an error only when no photo was zapped",
+                "{ids?, margin?: inside|edge|border|film (default inside; film: the whole film inside the holder, rebate and sprocket holes and all, as for 35 mm across a medium-format gate), format?: auto|35mm|half|xpan|645|66|67|68|69|612|617 (default auto: no aspect assumed), sprockets?: remove|keep (default remove), film?: negative|slide (default negative), roll?: bool (default false)} — on each target photo (`ids`, else the selection), finds the picture on the scan (the holder, the film's rebate and its sprocket holes left out), straightens and crops to it (sprockets keep: the long sides of 35 mm by the sprocket holes, just outside whole ones, just inside ones the holder cuts), and for a negative takes the film base from the rebate and measures the picture (a slide is only cropped); one undo step for all. A crop the user set (not Zap!'s last one) stays; then only the base and the measurement are taken. With `roll`, the negatives are one roll: measured together (the film base the median of their rebates', the levels from all their pictures), the same measurement in each, `negative.roll` their number; a frame whose base is more than 15 % off is measured on its own. A photo with no frame is left out → the first zapped photo's conversion with `zap` (what was found), `id`, `roll` ({frames, bases, apart} or null), `changed` and `failed` [{id, error}]; an error only when no photo was zapped",
                 has_selection,
                 zap
             )

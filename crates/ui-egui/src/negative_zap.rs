@@ -24,6 +24,8 @@ struct Completed {
     settings: Vec<(PhotoId, Arc<DevelopSettings>, DevelopSettings)>,
     /// Photos left out, with why.
     failed: Vec<(PhotoId, String)>,
+    /// What measuring them as one roll did.
+    roll: Option<negative_zap::Roll>,
 }
 
 /// The call's parameters with the panel's margin and format where it names none.
@@ -51,7 +53,8 @@ impl Prepared {
     fn run(self, progress: Option<&lightcraft_engine::activity::TaskHandle>) -> Result<Completed, String> {
         let total = self.inputs.len() as u64;
         let cancelled = || progress.is_some_and(|p| p.is_cancelled());
-        let mut settings = Vec::with_capacity(self.inputs.len());
+        let mut zapped = Vec::with_capacity(self.inputs.len());
+        let mut read = Vec::with_capacity(self.inputs.len());
         let mut failed = Vec::new();
         for (i, input) in self.inputs.into_iter().enumerate() {
             if cancelled() {
@@ -59,7 +62,10 @@ impl Prepared {
             }
             // a scan with no frame on it (or that can't be read) is left out, not the whole selection
             match input.run(self.options) {
-                Ok(z) => settings.push((input.id, input.settings, z.settings)),
+                Ok(z) => {
+                    zapped.push((input.id, z));
+                    read.push(input.settings);
+                }
                 Err(e) => failed.push((input.id, e)),
             }
             if let Some(p) = progress {
@@ -69,16 +75,18 @@ impl Prepared {
         if cancelled() {
             return Err(crate::i18n::tr("Zap! cancelled").into());
         }
-        if settings.is_empty() {
+        if zapped.is_empty() {
             let why = failed.first().map(|(id, e)| format!(" (photo {}: {e})", id.0)).unwrap_or_default();
             return Err(crate::i18n::tr_format!("Zap!: no film frame found on any of the photos{why}", why = why));
         }
-        Ok(Completed { library: self.library, commits: self.commits, settings, failed })
+        let roll = if self.options.roll { negative_zap::pool(&mut zapped)? } else { None };
+        let settings = zapped.into_iter().zip(read).map(|((id, z), before)| (id, before, z.settings)).collect();
+        Ok(Completed { library: self.library, commits: self.commits, settings, failed, roll })
     }
 }
 
-/// Commits a run as one undo step → the photos changed and those left out.
-fn apply(app: &mut LightcraftApp, completed: Completed) -> Result<(usize, usize), String> {
+/// Commits a run as one undo step → the photos changed, those left out and the roll.
+fn apply(app: &mut LightcraftApp, completed: Completed) -> Result<(usize, usize, Option<negative_zap::Roll>), String> {
     // An undo or a live edit changes a photo's settings without a commit: compare the settings too.
     let moved = completed.settings.iter().any(|(id, before, _)| app.session.develop_of(*id).is_none_or(|now| now != *before));
     if app.session.library_generation() != completed.library || app.session.commits() != completed.commits || moved {
@@ -95,7 +103,24 @@ fn apply(app: &mut LightcraftApp, completed: Completed) -> Result<(usize, usize)
             })
             .map_err(|e| e.to_string())?;
     }
-    Ok((changed, completed.failed.len()))
+    Ok((changed, completed.failed.len(), completed.roll))
+}
+
+/// The toast after a run in the background.
+fn done_message(changed: usize, left: usize, roll: Option<&negative_zap::Roll>) -> String {
+    let mut m = match left {
+        0 => crate::i18n::tr_format!("Zap!: {changed} photo(s)", changed = changed),
+        _ => crate::i18n::tr_format!("Zap!: {changed} photo(s), no frame found on {left}", changed = changed, left = left),
+    };
+    if let Some(r) = roll {
+        m.push_str(". ");
+        m.push_str(&crate::i18n::tr_format!("{frames} measured as one roll, the film base from {bases}", frames = r.frames.len(), bases = r.bases));
+        if !r.apart.is_empty() {
+            m.push_str(". ");
+            m.push_str(&crate::i18n::tr_format!("{apart} with another film base measured on their own", apart = r.apart.len()));
+        }
+    }
+    m
 }
 
 /// `develop.negativeZap` from the app: one photo at once (its reply as the engine gives it), a
@@ -119,10 +144,7 @@ pub(crate) fn command(app: &mut LightcraftApp, params: &Value) -> Result<Value, 
         cancel,
         move |progress| prepared.run(Some(&progress)),
         |app, ctx, result| match result.and_then(|done| apply(app, done)) {
-            Ok((changed, 0)) => app.toast(ctx, crate::i18n::tr_format!("Zap!: {changed} photo(s)", changed = changed)),
-            Ok((changed, left)) => {
-                app.toast(ctx, crate::i18n::tr_format!("Zap!: {changed} photo(s), no frame found on {left}", changed = changed, left = left))
-            }
+            Ok((changed, left, roll)) => app.toast(ctx, done_message(changed, left, roll.as_ref())),
             Err(error) => app.toast(ctx, error),
         },
     )?;

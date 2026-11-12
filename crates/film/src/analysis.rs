@@ -87,6 +87,16 @@ impl ValueHistogram {
         self.count
     }
 
+    /// Adds `other`'s samples to these (pooling several scans into one measurement).
+    pub fn add(&mut self, other: &ValueHistogram) {
+        for (mine, theirs) in self.bins.iter_mut().zip(other.bins.iter()) {
+            for (a, b) in mine.iter_mut().zip(theirs) {
+                *a = a.saturating_add(*b);
+            }
+        }
+        self.count = self.count.saturating_add(other.count);
+    }
+
     /// The value below which a fraction `q` (0..1) of channel `ch` lies.
     pub fn quantile(&self, ch: usize, q: f32) -> Option<f32> {
         self.bins.get(ch).and_then(|bins| quantile_bin(bins, self.count, q)).map(|b| b as f32 / (BINS - 1) as f32)

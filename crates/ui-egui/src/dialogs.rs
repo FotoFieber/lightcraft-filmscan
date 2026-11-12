@@ -1179,8 +1179,8 @@ fn label_names_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg:
 /// The body of the Zap! dialog: what was scanned, the film format, the sprocket holes and where the
 /// crop sits, for every selected photo.
 fn negative_zap_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg: &mut Dialog) {
-    use crate::panels::negative::{FILMS, MARGINS, SPROCKETS, zap_choice};
-    let Dialog::NegativeZap { film, format, sprockets, margin } = dlg else { return };
+    use crate::panels::negative::{FILMS, MARGINS, ROLLS, SPROCKETS, zap_choice};
+    let Dialog::NegativeZap { film, format, sprockets, margin, roll } = dlg else { return };
     let n = app.session.selected().len();
     ui.label(egui::RichText::new(crate::i18n::tr_format!("{n} photo{}", if n == 1 { "" } else { "s" }, n = n)).color(t.text_dim));
     let formats: Vec<(&str, &str)> = lightcraft_pipeline::negative_frame::FORMATS.iter().map(|f| (f.0, f.1)).collect();
@@ -1190,6 +1190,10 @@ fn negative_zap_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg
         zap_choice(ui, "negativeZap-sprockets", "Whether the crop keeps 35 mm film's sprocket holes", sprockets, &SPROCKETS)
     });
     field(ui, "Edge", |ui| zap_choice(ui, "negativeZap-margin", "Where the crop sits on the frame's edge", margin, &MARGINS));
+    if n > 1 && film != "slide" {
+        let tip = "As one roll: the film base and levels are measured on all the photos together, so they match; a photo scanned differently is measured on its own";
+        field(ui, "Color", |ui| zap_choice(ui, "negativeZap-roll", tip, roll, &ROLLS));
+    }
 }
 
 /// The body of the Rename dialog.

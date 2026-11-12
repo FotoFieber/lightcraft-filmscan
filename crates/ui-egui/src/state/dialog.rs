@@ -94,6 +94,8 @@ pub enum Dialog {
         format: String,
         sprockets: String,
         margin: String,
+        /// "single" or "roll" (several photos measured together).
+        roll: String,
     },
     /// Batch rename the selected photos with a file-name template.
     Rename {

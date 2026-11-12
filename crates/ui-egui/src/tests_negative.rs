@@ -176,13 +176,14 @@ fn photo_zap_asks_for_its_choices_and_runs_with_them() {
     let r = h.request("ui.menu.invoke", json!({"command": "dialog.negativeZap"}), T);
     assert_eq!(r["ok"], true, "{r}");
     h.settle(SETTLE);
-    let Some(crate::state::Dialog::NegativeZap { film, format, sprockets, margin }) = h.app.ui.dialog.as_mut() else {
+    let Some(crate::state::Dialog::NegativeZap { film, format, sprockets, margin, .. }) = h.app.ui.dialog.as_mut() else {
         panic!("the Zap! dialog: {:?}", h.app.ui.dialog)
     };
     assert_eq!((film.as_str(), format.as_str(), sprockets.as_str(), margin.as_str()), ("negative", "35mm", "remove", "inside"));
     for w in ["dropdown:negativeZap-film", "dropdown:negativeZap-format", "dropdown:negativeZap-sprockets", "dropdown:negativeZap-margin"] {
         assert!(h.app.widgets.iter().any(|(id, _)| id == w), "{w} in the dialog");
     }
+    assert!(!h.app.widgets.iter().any(|(id, _)| id == "dropdown:negativeZap-roll"), "one photo is no roll");
     assert_eq!(h.app.session.develop_of(id).unwrap(), before);
     // the holes kept this time
     *sprockets = "keep".into();
@@ -238,5 +239,52 @@ fn zap_on_a_selection_runs_in_the_background_and_commits_once() {
     }
     app.session.execute("edit.undo", &json!({})).unwrap();
     assert!(ids.iter().all(|id| !app.session.develop_of(*id).unwrap().negative.enabled), "undone together");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Photo ▸ Film Scan ▸ Zap!… on several photos offers to measure them as one roll; they then share
+/// one measurement, the panel says so, and Release measures one photo on its own again.
+#[test]
+fn zap_as_one_roll_from_the_dialog_and_release_from_the_panel() {
+    let dir = std::env::temp_dir().join(format!("lc-ui-zap-roll-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let paths: Vec<_> = (0..3).map(|i| dir.join(format!("negative-{i}.png"))).collect();
+    for (i, p) in paths.iter().enumerate() {
+        negative_png(p);
+        let mut bytes = std::fs::read(p).unwrap();
+        bytes.extend(std::iter::repeat_n(0u8, i));
+        std::fs::write(p, bytes).unwrap();
+    }
+    let mut session = lightcraft_engine::Session::new().with_fs();
+    session.execute("library.import", &json!({"paths": paths.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>()})).unwrap();
+    let app = LightcraftApp::new(session, Services { png: None, ..Default::default() });
+    let mut h = Headless::new(app, [1400.0, 900.0], 1.0);
+    let ids: Vec<_> = h.app.session.visible_cloned().to_vec();
+    h.app.session.execute("library.select", &json!({"ids": ids.iter().map(|i| i.0).collect::<Vec<_>>(), "active": ids[0].0})).unwrap();
+    let r = h.request("ui.menu.invoke", json!({"command": "dialog.negativeZap"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    assert!(h.app.widgets.iter().any(|(id, _)| id == "dropdown:negativeZap-roll"), "several photos can be a roll");
+    let Some(crate::state::Dialog::NegativeZap { roll, .. }) = h.app.ui.dialog.as_mut() else { panic!("the Zap! dialog: {:?}", h.app.ui.dialog) };
+    assert_eq!(roll, "single", "each on its own until asked");
+    *roll = "roll".into();
+    let r = h.request("ui.dialog.confirm", json!({}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    assert!(crate::tasks::wait_for(&mut h.app, &egui::Context::default(), "Zap!", SETTLE));
+    assert!(h.app.ui.toast.as_ref().is_some_and(|t| t.0.contains("3 measured as one roll, the film base from 3")), "{:?}", h.app.ui.toast);
+    h.settle(SETTLE);
+    let negs: Vec<_> = ids.iter().map(|id| h.app.session.develop_of(*id).unwrap().negative.clone()).collect();
+    assert!(negs.iter().all(|n| n.roll == Some(3) && n.measured == negs[0].measured && n.base == negs[0].base), "{negs:?}");
+    assert_eq!(h.app.ui.negative_zap_roll, "roll", "remembered for the next Zap!…");
+
+    // the panel shows the roll; Release measures the active photo on its own
+    h.app.session.execute("library.select", &json!({"ids": [ids[0].0], "active": ids[0].0})).unwrap();
+    h.request("ui.menu.invoke", json!({"command": "panel.negative"}), T);
+    h.settle(SETTLE);
+    let r = h.request("ui.clickWidget", json!({"id": "button:negative-rollRelease"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    assert!(h.app.session.develop_of(ids[0]).unwrap().negative.roll.is_none());
+    assert_eq!(h.app.session.develop_of(ids[1]).unwrap().negative.roll, Some(3), "the others stay in the roll");
     std::fs::remove_dir_all(&dir).ok();
 }

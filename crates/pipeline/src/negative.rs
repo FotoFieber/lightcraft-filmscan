@@ -136,12 +136,44 @@ pub fn scan_colour(rec2020: [f32; 3]) -> [f64; 3] {
 /// Measures `src` (linear Rec.2020, the whole scan) as a negative, leaving `border` (a fraction of
 /// each edge) out.
 pub fn measure(src: &Rgb32f, border: f64) -> Result<NegativeMeasurement, String> {
-    let m = to_srgb().to_f32();
-    let px: Vec<[f32; 3]> = src.data.iter().map(|v| m.map(|r| r[0] * v[0] + r[1] * v[1] + r[2] * v[2])).collect();
     let o = lightcraft_film::MeasureOptions { border: border as f32, ..Default::default() };
-    let m = lightcraft_film::measure::measure(&px, src.width, src.height, &o)?;
+    Ok(measured(&lightcraft_film::measure::measure(&srgb_pixels(src), src.width, src.height, &o)?))
+}
+
+/// At most this many samples of each frame go into a roll's measurement, so every frame weighs
+/// about the same in it however large its picture.
+pub const ROLL_SAMPLES: usize = 250_000;
+
+/// The samples a roll's measurement takes from one frame (`src` as for [`measure`]), relative to
+/// the frame's film `base` when it showed (linear sRGB, as [`Negative::base`]): frames scanned
+/// brighter or darker then pool alike. Add the frames' samples together and measure them with
+/// [`measure_samples`].
+pub fn sample(src: &Rgb32f, border: f64, base: Option<[f64; 3]>) -> Result<film::ValueHistogram, String> {
+    let o = lightcraft_film::MeasureOptions { border: border as f32, max_samples: ROLL_SAMPLES, ..Default::default() };
+    let mut px = srgb_pixels(src);
+    if let Some(b) = base {
+        let k = b.map(|v| if v.is_finite() && v > 1e-4 { (1.0 / v) as f32 } else { 1.0 });
+        for p in &mut px {
+            *p = [p[0] * k[0], p[1] * k[1], p[2] * k[2]];
+        }
+    }
+    lightcraft_film::measure::sample(&px, src.width, src.height, &o)
+}
+
+/// The measurement of samples from [`sample`]: one frame's, or a roll's added together.
+pub fn measure_samples(samples: &film::ValueHistogram) -> Result<NegativeMeasurement, String> {
+    Ok(measured(&lightcraft_film::measure::measure_samples(samples, &lightcraft_film::MeasureOptions::default())?))
+}
+
+/// `src`'s pixels in linear sRGB, the space the film model measures in.
+fn srgb_pixels(src: &Rgb32f) -> Vec<[f32; 3]> {
+    let m = to_srgb().to_f32();
+    src.data.iter().map(|v| m.map(|r| r[0] * v[0] + r[1] * v[1] + r[2] * v[2])).collect()
+}
+
+fn measured(m: &lightcraft_film::Measurement) -> NegativeMeasurement {
     let d = |v: [f32; 3]| v.map(f64::from);
-    Ok(NegativeMeasurement { base: d(m.base), black: d(m.black), white: d(m.white), balance: d(m.balance) })
+    NegativeMeasurement { base: d(m.base), black: d(m.black), white: d(m.white), balance: d(m.balance) }
 }
 
 #[cfg(test)]

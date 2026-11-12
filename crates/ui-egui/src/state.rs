@@ -254,6 +254,9 @@ pub struct UiState {
     pub negative_zap_format: String,
     pub negative_zap_sprockets: String,
     pub negative_zap_film: String,
+    /// Photo ▸ Zap!… on several photos: "single" measures each on its own, "roll" measures them
+    /// together as one roll.
+    pub negative_zap_roll: String,
     /// Active on-canvas tool: "", "brush", "linear", "radial", "wbPicker", "negBase", "negGray", "straighten", "remove",
     /// "lensBlurFocus" / "lensBlurBlur" (Lens Blur Brush Refinement, in the Edit panel).
     pub tool: String,
@@ -492,6 +495,7 @@ impl Default for UiState {
             negative_zap_format: "auto".into(),
             negative_zap_sprockets: "remove".into(),
             negative_zap_film: "negative".into(),
+            negative_zap_roll: "single".into(),
             tool: String::new(),
             selected_guide: None,
             brush_size: 0.04,

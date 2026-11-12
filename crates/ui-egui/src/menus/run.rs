@@ -1191,6 +1191,7 @@ fn ui_commands_9(app: &mut LightcraftApp, _ctx: &egui::Context, id: &str, p: &Va
                 format: ui.negative_zap_format.clone(),
                 sprockets: ui.negative_zap_sprockets.clone(),
                 margin: ui.negative_zap_margin.clone(),
+                roll: ui.negative_zap_roll.clone(),
             });
             Ok(Value::Null)
         }

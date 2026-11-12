@@ -55,6 +55,13 @@ impl Measurement {
 
 /// Measures a `w × h` scan of linear samples (row-major, 0..1 per channel).
 pub fn measure(pixels: &[[f32; 3]], w: usize, h: usize, o: &MeasureOptions) -> Result<Measurement, String> {
+    measure_samples(&sample(pixels, w, h, o)?, o)
+}
+
+/// The samples [`measure`] reads from a `w × h` scan: the pixels inside the border, on a grid of
+/// at most `o.max_samples`. Several scans' samples added together ([`ValueHistogram::add`]) measure
+/// as one, as a lab measures a roll.
+pub fn sample(pixels: &[[f32; 3]], w: usize, h: usize, o: &MeasureOptions) -> Result<ValueHistogram, String> {
     if pixels.len() < w.saturating_mul(h) {
         return Err("the image is smaller than its size says".into());
     }
@@ -76,6 +83,14 @@ pub fn measure(pixels: &[[f32; 3]], w: usize, h: usize, o: &MeasureOptions) -> R
             }
         }
     }
+    if hist.count() == 0 {
+        return Err("no pixels to measure".into());
+    }
+    Ok(hist)
+}
+
+/// The measurement of samples taken by [`sample`] (one scan's, or several added together).
+pub fn measure_samples(hist: &ValueHistogram, o: &MeasureOptions) -> Result<Measurement, String> {
     if hist.count() == 0 {
         return Err("no pixels to measure".into());
     }
@@ -156,6 +171,30 @@ mod tests {
         let picked = m.analysis(Some(BASE)).unwrap();
         assert_eq!(picked.base, BASE);
         assert_eq!(picked.black, [1.0; 3]);
+    }
+
+    #[test]
+    fn pooled_samples_measure_a_roll_between_its_frames() {
+        let (w, h) = (300, 200);
+        let o = MeasureOptions { border: 0.12, ..MeasureOptions::default() };
+        let bright = scan(w, h);
+        // the same film, a frame shot under: thinner (brighter on the scan) everywhere but the base
+        let dark: Vec<[f32; 3]> = bright.iter().map(|p| if *p == BASE { BASE } else { p.map(|v| v * 1.9) }).collect();
+        let one = measure(&bright, w, h, &o).unwrap();
+        assert_eq!(measure_samples(&sample(&bright, w, h, &o).unwrap(), &o).unwrap(), one, "measure is sample + measure_samples");
+        let other = measure(&dark, w, h, &o).unwrap();
+        let mut pooled = sample(&bright, w, h, &o).unwrap();
+        pooled.add(&sample(&dark, w, h, &o).unwrap());
+        assert_eq!(pooled.count(), 2 * sample(&bright, w, h, &o).unwrap().count());
+        let roll = measure_samples(&pooled, &o).unwrap();
+        for ch in 0..3 {
+            // the roll's levels lie between the two frames' own
+            let (lo, hi) = (one.black[ch].min(other.black[ch]), one.black[ch].max(other.black[ch]));
+            assert!(roll.black[ch] >= lo - 1e-3 && roll.black[ch] <= hi + 1e-3, "{roll:?}");
+            let (lo, hi) = (one.white[ch].min(other.white[ch]), one.white[ch].max(other.white[ch]));
+            assert!(roll.white[ch] >= lo - 1e-3 && roll.white[ch] <= hi + 1e-3, "{roll:?}");
+        }
+        assert!(measure_samples(&ValueHistogram::new(), &o).is_err(), "nothing sampled");
     }
 
     #[test]

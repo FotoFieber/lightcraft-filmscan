@@ -92,13 +92,16 @@ pub fn confirm_dialog(app: &mut LightcraftApp, dlg: &Dialog) -> Result<serde_jso
             r
         }
         Dialog::Rename { template, start } => app.run("photo.rename", json!({"template": template, "start": start})),
-        Dialog::NegativeZap { film, format, sprockets, margin } => {
+        Dialog::NegativeZap { film, format, sprockets, margin, roll } => {
             // the next Zap! (the dialog's and the panel's) starts from these
             app.ui.negative_zap_film = film.clone();
             app.ui.negative_zap_format = format.clone();
             app.ui.negative_zap_sprockets = sprockets.clone();
             app.ui.negative_zap_margin = margin.clone();
-            app.run("develop.negativeZap", json!({"film": film, "format": format, "sprockets": sprockets, "margin": margin}))
+            app.ui.negative_zap_roll = roll.clone();
+            // a roll needs two photos or more
+            let roll = roll == "roll" && app.session.selected().len() > 1;
+            app.run("develop.negativeZap", json!({"film": film, "format": format, "sprockets": sprockets, "margin": margin, "roll": roll}))
         }
         Dialog::RenameKeyword { from, to } => app.run("keyword.rename", json!({"from": from, "to": to})),
         Dialog::RenamePerson { from, to, merge } => app.run("faces.renamePerson", json!({"from": from, "to": to.trim(), "merge": merge})),

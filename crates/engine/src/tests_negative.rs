@@ -88,8 +88,13 @@ fn copy_and_paste_carries_the_conversion_to_another_frame() {
 /// holder, orange base, sprocket holes along the long edges and a textured, denser picture on
 /// 120..780 × 80..520 of the straight 900 × 600 scan.
 fn negative_scan(dir: &std::path::Path, angle: f64) -> std::path::PathBuf {
+    negative_scan_of(dir, &format!("negative-{angle}"), angle, [0.62, 0.26, 0.07], 1.0)
+}
+
+/// [`negative_scan`] of a film with this `base`, its picture `density` times as dense (in
+/// transmittance: below 1 is denser, a frame given more light), saved as `name`.png.
+fn negative_scan_of(dir: &std::path::Path, name: &str, angle: f64, base: [f32; 3], density: f64) -> std::path::PathBuf {
     let (w, h) = (900usize, 600usize);
-    let base = [0.62f32, 0.26, 0.07];
     let fwd = lightcraft_geom::Affine::rotate_about(angle.to_radians(), lightcraft_geom::Point::new(w as f64 / 2.0, h as f64 / 2.0));
     let img = lightcraft_raster::Rgb32f::from_fn(w, h, |x, y| {
         let q = fwd.apply(lightcraft_geom::Point::new(x as f64 + 0.5, y as f64 + 0.5));
@@ -106,11 +111,11 @@ fn negative_scan(dir: &std::path::Path, angle: f64) -> std::path::PathBuf {
             return base;
         }
         let t = 0.2 + 0.25 * ((x / 37.0).sin() * (y / 23.0).cos()).abs() + if ((x / 90.0) as i32 + (y / 70.0) as i32) % 2 == 0 { 0.2 } else { 0.0 };
-        base.map(|c| c * t as f32)
+        base.map(|c| c * (t * density) as f32)
     });
     // (linear sRGB, as the PNG's sRGB encoding gives it back)
     let png = lightcraft_codecs::encode::encode_png(&lightcraft_codecs::encode::EncodeImage::rgba8(&img.to_srgb8()), &Default::default()).unwrap();
-    let path = dir.join(format!("negative-{angle}.png"));
+    let path = dir.join(format!("{name}.png"));
     std::fs::write(&path, png).unwrap();
     path
 }
@@ -398,4 +403,168 @@ fn zap_on_real_scans() {
             write_ppm(&out.join(format!("{name}-zap.ppm")), &rendered.image);
         }
     }
+}
+
+/// Zap! on a roll: its frames share one measurement, each on its own film base (a frame scanned
+/// brighter still belongs), a frame of another film is measured on its own, and measuring a frame
+/// again takes it out of the roll.
+#[test]
+fn zap_as_a_roll_measures_the_frames_together() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-roll-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let base = [0.62, 0.26, 0.07];
+    let paths = [
+        negative_scan_of(&dir, "a", 1.0, base, 1.0),
+        negative_scan_of(&dir, "b", -1.0, base, 1.0),
+        // a frame given much more light: denser
+        negative_scan_of(&dir, "dense", 0.5, base, 0.45),
+        // scanned with more light: brighter base and picture alike
+        negative_scan_of(&dir, "bright", -0.5, base.map(|c| c * 1.3), 1.0),
+        // another film's base, far off
+        negative_scan_of(&dir, "other", 0.0, [0.45, 0.33, 0.2], 1.0),
+    ];
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": paths.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>()})).unwrap();
+    let ids: Vec<u64> = s.visible_cloned().iter().map(|p| p.0).collect();
+    assert_eq!(ids.len(), 5);
+    let develop = |s: &Session, id: u64| s.develop_of(crate::PhotoId(id)).unwrap().negative.clone();
+    let name_of = |s: &Session, id: u64| s.catalog.photo(crate::PhotoId(id)).unwrap().file_name.clone();
+    let by_name = |s: &Session, n: &str| *ids.iter().find(|id| name_of(s, **id).starts_with(n)).unwrap();
+    let (a, b, dense, bright, other) = (by_name(&s, "a."), by_name(&s, "b."), by_name(&s, "dense"), by_name(&s, "bright"), by_name(&s, "other"));
+
+    // zapped one by one first: each its own measurement
+    s.execute("develop.negativeZap", &json!({"ids": ids})).unwrap();
+    let alone = develop(&s, dense).measured.unwrap();
+    assert!(develop(&s, a).roll.is_none());
+    assert_ne!(develop(&s, a).measured, develop(&s, dense).measured);
+
+    let r = s.execute("develop.negativeZap", &json!({"ids": ids, "roll": true})).unwrap();
+    let roll = &r["roll"];
+    let frames: Vec<u64> = roll["frames"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).collect();
+    assert_eq!(frames.len(), 4, "{r}");
+    assert!(frames.contains(&bright), "scanned brighter, the same film: {r}");
+    assert!(!frames.contains(&other) && roll["apart"] == json!([other]), "the other film is apart: {r}");
+    let (na, nb, nd, nr, no) = (develop(&s, a), develop(&s, b), develop(&s, dense), develop(&s, bright), develop(&s, other));
+    assert_eq!((na.roll, nb.roll, nd.roll, nr.roll, no.roll), (Some(4), Some(4), Some(4), Some(4), None));
+    // one measurement for the roll, on each frame's own film base
+    let relative = |n: &lightcraft_develop::Negative| {
+        let (m, b) = (n.measured.unwrap(), n.base.unwrap());
+        [0, 1, 2].map(|c| (m.black[c] / b[c], m.white[c] / b[c], m.balance[c]))
+    };
+    for n in [&nb, &nd, &nr] {
+        for (x, y) in relative(&na).iter().zip(relative(n)) {
+            assert!((x.0 - y.0).abs() < 1e-9 && (x.1 - y.1).abs() < 1e-9 && (x.2 - y.2).abs() < 1e-9, "{na:?} vs {n:?}");
+        }
+    }
+    let base_of = na.base.unwrap();
+    assert!((0..3).all(|c| (base_of[c] - f64::from(base[c])).abs() < 0.03), "a frame's own base: {base_of:?}");
+    let bright_base = nr.base.unwrap();
+    assert!((0..3).all(|c| (bright_base[c] / base_of[c] - 1.3).abs() < 0.08), "the brighter scan's own base: {bright_base:?}");
+    // the dense frame alone set its own levels; in the roll it no longer does
+    assert_ne!(nd.measured.unwrap(), alone);
+    // each frame still has its own crop
+    assert_ne!(s.develop_of(crate::PhotoId(a)).unwrap().crop.geometry, s.develop_of(crate::PhotoId(b)).unwrap().crop.geometry);
+
+    // one undo step takes the whole roll back
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert!(develop(&s, a).roll.is_none() && develop(&s, dense).measured == Some(alone));
+    s.execute("edit.redo", &json!({})).unwrap();
+    assert_eq!(develop(&s, a).roll, Some(4));
+
+    // measuring a frame again measures it on its own
+    s.execute("library.select", &json!({"ids": [a], "active": a})).unwrap();
+    s.execute("develop.negative", &json!({"measure": true})).unwrap();
+    assert!(develop(&s, a).roll.is_none());
+    assert_eq!(develop(&s, b).roll, Some(4), "the rest stay in the roll");
+    // zapping a frame alone, too
+    s.execute("develop.negativeZap", &json!({"ids": [b]})).unwrap();
+    assert!(develop(&s, b).roll.is_none());
+    // a roll of one is no roll
+    let r = s.execute("develop.negativeZap", &json!({"ids": [dense], "roll": true})).unwrap();
+    assert!(r["roll"].is_null() && develop(&s, dense).roll.is_none(), "{r}");
+    assert!(s.execute("develop.negativeZap", &json!({"ids": ids, "roll": "yes"})).is_err());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Zap! on a roll of real scans, each frame alone and then as one roll: prints each frame's mean
+/// L*a*b* and how far the frames spread, and writes both renders side by side. Real scans aren't
+/// committed: set LC_ROLL_DIR=<folder of one roll's scans> and LC_ZAP_OUT=<folder>.
+#[test]
+#[ignore = "needs a folder of real scans"]
+fn zap_roll_on_real_scans() {
+    let (Ok(dir), Ok(out)) = (std::env::var("LC_ROLL_DIR"), std::env::var("LC_ZAP_OUT")) else {
+        lightcraft_testkit::skip!(Input, "set LC_ROLL_DIR=<folder of one roll's scans> and LC_ZAP_OUT=<folder>");
+        return;
+    };
+    let out = std::path::PathBuf::from(out);
+    std::fs::create_dir_all(&out).unwrap();
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [dir]})).unwrap();
+    let ids: Vec<u64> = s.visible_cloned().iter().map(|p| p.0).collect();
+    let format = std::env::var("LC_ZAP_FORMAT").unwrap_or_else(|_| "auto".into());
+    let sprockets = std::env::var("LC_ZAP_SPROCKETS").unwrap_or_else(|_| "remove".into());
+    let p = |roll: bool| json!({"ids": ids, "format": format, "sprockets": sprockets, "roll": roll});
+    // mean L*a*b* of a render (sRGB, D65)
+    let lab = |img: &lightcraft_raster::Rgba8| {
+        let lin = |v: u8| {
+            let c = f64::from(v) / 255.0;
+            if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        };
+        let f = |t: f64| if t > 0.008856 { t.cbrt() } else { 7.787 * t + 16.0 / 116.0 };
+        let mut acc = [0.0f64; 3];
+        let mut n = 0.0f64;
+        for px in &img.data {
+            let (r, g, b) = (lin(px[0]), lin(px[1]), lin(px[2]));
+            let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+            let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+            let (fx, fy, fz) = (f(x), f(y), f(z));
+            acc[0] += 116.0 * fy - 16.0;
+            acc[1] += 500.0 * (fx - fy);
+            acc[2] += 200.0 * (fy - fz);
+            n += 1.0;
+        }
+        acc.map(|v| v / n.max(1.0))
+    };
+    let mut results = Vec::new();
+    for roll in [false, true] {
+        let r = s.execute("develop.negativeZap", &p(roll)).unwrap();
+        println!("roll={roll}: changed {} failed {} roll {}", r["changed"], r["failed"].as_array().map_or(0, Vec::len), r["roll"]);
+        let mut per = Vec::new();
+        for id in &ids {
+            let id = crate::PhotoId(*id);
+            if !s.develop_of(id).unwrap().negative.enabled {
+                continue;
+            }
+            let img = s.render_now(id, 600, 600).unwrap().image;
+            per.push((id, lab(&img), img));
+        }
+        results.push(per);
+    }
+    let spread = |per: &[(crate::PhotoId, [f64; 3], lightcraft_raster::Rgba8)]| {
+        let n = per.len().max(1) as f64;
+        let mean: Vec<f64> = (0..3).map(|c| per.iter().map(|p| p.1[c]).sum::<f64>() / n).collect();
+        (0..3).map(|c| (per.iter().map(|p| (p.1[c] - mean[c]).powi(2)).sum::<f64>() / n).sqrt()).collect::<Vec<_>>()
+    };
+    for (single, roll) in results[0].iter().zip(&results[1]) {
+        let name = s.catalog.photo(single.0).map(|p| p.file_name.clone()).unwrap_or_default();
+        println!(
+            "{name}: single L {:.1} a {:.1} b {:.1} | roll L {:.1} a {:.1} b {:.1}",
+            single.1[0], single.1[1], single.1[2], roll.1[0], roll.1[1], roll.1[2]
+        );
+        // side by side: alone | roll
+        let (a, b) = (&single.2, &roll.2);
+        let (w, h) = (a.width + b.width + 8, a.height.max(b.height));
+        let mut img = lightcraft_raster::Rgba8::new(w, h);
+        for (src, x0) in [(a, 0), (b, a.width + 8)] {
+            for y in 0..src.height {
+                for x in 0..src.width {
+                    img.set(x0 + x, y, src.get(x, y));
+                }
+            }
+        }
+        write_ppm(&out.join(format!("{}.ppm", name.rsplit_once('.').map_or(name.as_str(), |n| n.0))), &img);
+    }
+    let (a, b) = (spread(&results[0]), spread(&results[1]));
+    println!("SPREAD single L {:.2} a {:.2} b {:.2} | roll L {:.2} a {:.2} b {:.2}", a[0], a[1], a[2], b[0], b[1], b[2]);
 }
