@@ -15,9 +15,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE="${1:?usage: publish.sh <upstream-tag>}"
 FORK=FotoFieber/lightcraft-filmscan
 REMOTE=fotofieber
-TAG="$BASE-filmscan"
 OUT="$ROOT/dist/fotofieber"
 VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' "$ROOT/Cargo.toml")"
+# The tag follows the version: 0.21.1+filmscan -> v0.21.1-filmscan, 0.21.1+filmscan.2 -> v0.21.1-filmscan.2.
+TAG="$BASE-${VERSION#*+}"
 DEB="$OUT/lightcraft-filmscan-$VERSION-linux-x86_64.deb"
 NOTES="$OUT/notes.md"
 BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD)"

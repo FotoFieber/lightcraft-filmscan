@@ -14,15 +14,17 @@ BASE="${1:?usage: release-notes.sh <upstream-tag> [ref]}"
 REF="${2:-HEAD}"
 FORK=FotoFieber/lightcraft-filmscan
 UPSTREAM=storytold/lightcraft
-TAG="$BASE-filmscan"
-VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' "$ROOT/Cargo.toml")"
+VERSION="$(git -C "$ROOT" show "$REF:Cargo.toml" | awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }')"
+# The tag follows the version: 0.21.1+filmscan -> v0.21.1-filmscan, 0.21.1+filmscan.2 -> v0.21.1-filmscan.2.
+TAG="$BASE-${VERSION#*+}"
 git -C "$ROOT" rev-parse -q --verify "$BASE^{commit}" >/dev/null || { echo "error: no tag $BASE" >&2; exit 1; }
 
-# Commits of the open upstream pull requests, matched by subject: "<subject prefix>|<PR>".
+# Commits of the open upstream pull requests, matched by subject: "<subject prefix>|<PR> [<PR> ...]".
 PRS=(
   "Convert Negative 2/4:|3985"
   "Convert Negative 3/4:|3986"
   "Convert Negative 4/4:|3987"
+  "Convert Negative 2/4–4/4:|3985 3986 3987"
 )
 
 commits() { git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$BASE..$REF"; }
@@ -51,7 +53,9 @@ kind_of() {
 from_prs="" ours_fix="" ours_zap="" ours_i18n="" ours_build="" n_ours=0
 while IFS=$'\t' read -r hash email subject; do
   if pr="$(pr_of "$subject")"; then
-    from_prs+="$(line "$hash" "$email" "$subject") — [#$pr](https://github.com/$UPSTREAM/pull/$pr)"$'\n'
+    links=""
+    for n in $pr; do links+="${links:+, }[#$n](https://github.com/$UPSTREAM/pull/$n)"; done
+    from_prs+="$(line "$hash" "$email" "$subject") — $links"$'\n'
   else
     n_ours=$((n_ours + 1))
     l="$(line "$hash" "$email" "$subject")"$'\n'
@@ -63,6 +67,20 @@ while IFS=$'\t' read -r hash email subject; do
     esac
   fi
 done < <(commits)
+
+# What changed since the previous release of this build (a v*-filmscan* tag before this one).
+prev="$(git -C "$ROOT" tag --merged "$REF" --sort=-creatordate --list 'v*-filmscan*' | grep -vx "$TAG" | head -1 || true)"
+since=""
+if [[ -n "$prev" ]]; then
+  while IFS=$'\t' read -r hash email subject; do
+    since+="$(line "$hash" "$email" "$subject")"$'\n'
+  done < <(git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$prev..$REF")
+fi
+
+since_block=""
+if [[ -n "$since" ]]; then
+  since_block="## What's new since $prev"$'\n\n'"$since"$'\n'
+fi
 
 shots=""
 if compgen -G "$ROOT/dist/fotofieber/screenshots/*.png" >/dev/null; then
@@ -94,7 +112,7 @@ and slide scans into positives, Zap!, the roll mode) and to give feedback on the
 LightCraft itself. What proves useful is meant to go upstream; once LightCraft ships these features, the official
 version is the one to use.
 
-## Download
+${since_block}## Download
 
 | File | For |
 |---|---|
@@ -126,7 +144,9 @@ All changes: [$UPSTREAM $BASE...$FORK $TAG](https://github.com/$UPSTREAM/compare
 ### 2. From open upstream pull requests, by Yorgos S. ([@smyrgeorge](https://github.com/smyrgeorge))
 
 Parts 2–4 of the series, not yet merged upstream: the settings and pipeline stage, the engine commands, and the
-Photo menu entry with its panel.
+Photo menu entry with its panel. Since the review round of 2026-11-12 they include review fixes by Manuel de Prada
+Corral ([@manueldeprada](https://github.com/manueldeprada)) after the review by
+[@eliets2](https://github.com/eliets2).
 
 $from_prs
 ### 3. Our own changes ($n_ours commits)
