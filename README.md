@@ -45,9 +45,6 @@
   <img alt="MCP server included" src="https://img.shields.io/badge/MCP-ready-8a5800?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-8a5800?style=flat-square">
   <a href="ROADMAP.md"><img alt="Status: young and moving fast" src="https://img.shields.io/badge/status-young%20%26%20moving%20fast-f2a516?style=flat-square"></a>
-  <br>
-  <a href="https://sonarcloud.io/project/overview?id=storytold_lightcraft"><img alt="Scanned by SonarCloud" src="https://img.shields.io/badge/Scanned_by-SonarCloud-4b9fd5?style=flat-square&logo=sonarqubecloud&logoColor=white"></a>
-  <a href="https://coderabbit.ai"><img alt="Reviewed by CodeRabbit" src="https://img.shields.io/coderabbit/prs/github/storytold/lightcraft?style=flat-square&label=Reviewed%20by%20CodeRabbit&logo=coderabbit"></a>
 </p>
 
 <p align="center">
@@ -65,6 +62,7 @@
 
 
 <p align="center">
+  <a href="#film-scans-convert-negative-this-build">Film scans</a> ·
   <a href="#edit-like-you-mean-it">Editing</a> ·
   <a href="#color-grading-the-cinematic-way">Color grading</a> ·
   <a href="#before--after">Before &amp; after</a> ·
@@ -81,6 +79,21 @@
 </p>
 
 <br>
+
+## Film scans: Convert Negative (this build)
+
+Camera and scanner scans of film become positives inside LightCraft, non-destructively like every other edit.
+
+- **Photo ▸ Film Scan ▸ Zap!…** finds the frame on the scan, straightens and crops it (35 mm with or without the
+  sprocket holes, medium format, slides, or the whole film) and measures the film base on the rebate, for one photo
+  or a whole selection in the background, as one undo step.
+- **As One Roll** measures several frames of a roll together, each on its own film base, so the colours of a roll
+  stay consistent; **Release** takes a frame out of the roll again.
+- **Photo ▸ Film Scan ▸ Convert Without Cropping** converts without touching the crop.
+- The **Film Scan** panel (also in the tool strip) holds the film stock, film base and gray point pickers, exposure,
+  brightness, contrast, temperature, tint, saturation and, in Advanced, tone, colour and white balance models.
+
+Screenshots are on each [release page](https://github.com/FotoFieber/lightcraft/releases).
 
 ## Edit like you mean it
 
@@ -390,6 +403,7 @@ LightCraft is young and moving fast: **alpha**. **Where we honestly stand** (det
 | GPX tracklog auto-tagging and offline reverse geocoding | ✅ · place names require the GeoNames dataset; Map view ⬜ |
 | Print layouts, picture packages, templates and colour-managed PDF export | ✅ layouts/PDF · 🚧 direct printer output and page overlays |
 | Slideshow playback, layouts, overlays, templates and PDF/JPEG/AV1 export | ✅ playback · 🚧 dedicated module editor and music ([details](docs/slideshow.md)) |
+| Film scans: Convert Negative, Zap! (frame, crop, film base), roll mode, Film Scan panel (this build only) | ✅ · upstream: open pull requests #3985–#3987 |
 | Video import/editing and Book module | ⬜ |
 | Web build (same UI in the browser via WASM): persistent library in OPFS/IndexedDB, Web Worker rendering, export downloads | ✅ · WebGPU, Safari/Firefox testing 🚧 |
 
@@ -402,7 +416,7 @@ LightCraft is young and moving fast: **alpha**. **Where we honestly stand** (det
 Workspace builds, including the desktop, web and CLI applications, require Rust 1.95 or newer.
 
 ```sh
-git clone https://github.com/storytold/lightcraft && cd lightcraft
+git clone -b fotofieber/convert-negative https://github.com/FotoFieber/lightcraft && cd lightcraft
 cargo run --release -p lightcraft                       # opens your library (~/Pictures/LightCraft Library; a new one starts with demo photos)
 cargo run --release -p lightcraft -- ~/Pictures/trip    # import your photos (folders are scanned, duplicates skipped)
 cargo run --release -p lightcraft -- --memory           # a throwaway in-memory demo session (writes nothing)
@@ -526,12 +540,12 @@ The web build needs the `wasm32-unknown-unknown` target and the matching `wasm-b
 (`cargo xtask web` prints the exact install command); see [docs/web.md](docs/web.md).
 
 **Nix** builds the desktop app and `lightcraft-cli` (the Nix build always includes the craft-fonts input, so Japanese
-text has glyphs):
+text has glyphs). The Nix package is community-maintained and has not been tested with this build:
 
 ```sh
-nix run github:storytold/lightcraft                    # the desktop app
-nix build github:storytold/lightcraft                  # → ./result/bin/{lightcraft,lightcraft-cli}
-nix develop github:storytold/lightcraft                # rust toolchain + native deps + fonts
+nix run 'github:FotoFieber/lightcraft?ref=fotofieber/convert-negative'      # the desktop app
+nix build 'github:FotoFieber/lightcraft?ref=fotofieber/convert-negative'    # → ./result/bin/{lightcraft,lightcraft-cli}
+nix develop 'github:FotoFieber/lightcraft?ref=fotofieber/convert-negative'  # rust toolchain + native deps + fonts
 ```
 
 On NixOS, run a `cargo` build from `nix develop`: outside it the app can't find `libvulkan.so.1`, finds no GPU and
@@ -541,7 +555,7 @@ In a flake configuration (NixOS, home-manager, nix-darwin):
 
 ```nix
 # flake.nix
-inputs.lightcraft.url = "github:storytold/lightcraft";
+inputs.lightcraft.url = "github:FotoFieber/lightcraft?ref=fotofieber/convert-negative";
 # optional: build against your own nixpkgs instead of the one LightCraft pins
 # inputs.lightcraft.inputs.nixpkgs.follows = "nixpkgs";
 
@@ -580,103 +594,42 @@ Humans and agents follow the same rules, so read [AGENTS.md](AGENTS.md) first. T
   `unsafe`, checked indexing on anything derived from input, and a regression test with every crash fix. Details in
   [AGENTS.md](AGENTS.md#never-crash-outranks-feature-work).
 
-Questions, ideas or a bug you'd like to talk through first? Bring them to [Discord](https://discord.gg/artcraft).
+Changes to LightCraft itself belong in [the original repository](https://github.com/storytold/lightcraft), where
+this build's Convert Negative parts are open as pull requests too. Problems and ideas for Convert Negative, Zap! and
+the roll mode in this build go to [its issues](https://github.com/FotoFieber/lightcraft/issues).
 
 <br>
 
 ## Downloads
 
-**New to LightCraft?** Download it from the [LightCraft page on getartcraft.com](https://getartcraft.com/apps/lightcraft). That's the easiest way to install it.
+This build ships one binary: a **`.deb` package for x86_64 Linux**, on the
+[releases page](https://github.com/FotoFieber/lightcraft/releases) (the [latest release](https://github.com/FotoFieber/lightcraft/releases/latest)
+is the newest). Each release names the LightCraft version it is based on.
 
-**Want a specific build or format?** On GitHub, the [latest release](https://github.com/storytold/lightcraft/releases/latest) has every build listed below, and [all releases](https://github.com/storytold/lightcraft/releases) has earlier versions and their notes. `<ver>` in the file names is the version number, and `SHA256SUMS.txt` lists a checksum for every file.
+| File | For |
+|---|---|
+| `lightcraft-<ver>+convert-negative-linux-x86_64.deb` | Debian 12+, Ubuntu 22.04+, Linux Mint 21+, Zorin OS 17+, Pop!_OS and other Debian-based distributions on x86_64 (glibc 2.35 or newer) |
+| `SHA256SUMS.txt` | the checksum of the `.deb` |
+| `convert-negative-patches-<upstream-ver>.tar.gz` | every change against the upstream version, as `git format-patch` files |
+| Source code (zip / tar.gz) | the full source of the release |
 
-### Windows
+Install it with `sudo apt install ./lightcraft-<ver>+convert-negative-linux-x86_64.deb`. The package is called
+`lightcraft`, like the official one, and replaces it; a newer official release installs over it again (without
+Convert Negative). Help ▸ Check for Updates reports official releases.
 
-| Build | Installer | Portable |
-|---|---|---|
-| x64 (64-bit Intel/AMD) | `lightcraft-<ver>-windows-x64.msi` | `lightcraft-<ver>-windows-x64-portable.zip` |
-| arm64 (Snapdragon and other ARM PCs) | `lightcraft-<ver>-windows-arm64.msi` | `lightcraft-<ver>-windows-arm64-portable.zip` |
-| x86 (32-bit) | `lightcraft-<ver>-windows-x86.msi` | `lightcraft-<ver>-windows-x86-portable.zip` |
-
-Installers and executables are code-signed. The installer asks who to install for and where (for your account only, in
-`%LOCALAPPDATA%\Programs\ArtCraft\LightCraft`, by default; "Everyone on this computer" uses
-`C:\Program Files\ArtCraft\LightCraft` (`Program Files (x86)` for the 32-bit build); upgrades stay in the folder you chose) and ends on a page confirming LightCraft was installed, with an
-option to start it. For unattended installs: `msiexec /i lightcraft-<ver>-windows-x64.msi /qn INSTALLFOLDER="D:\Apps\LightCraft\"`.
-A silent install is per-user by default. `INSTALLFOLDER` chooses the folder, not who it is installed for;
-add `ALLUSERS=1`, from an elevated terminal or deployment tool, for an all-users install.
-
-**Update or uninstall asks for an old `.msi`, or stops with error 1612 or 1714?** Windows removes the installed version
-with its own cached copy of that version's installer; if the copy is gone, it asks for the original file and stops
-(an update then ends with error 1603). Download the release MSI of the version and build you have installed from
-[all releases](https://github.com/storytold/lightcraft/releases) and run
-`msiexec /fv "<path to that .msi>" /qb+ /norestart`, approving the permission prompt if Windows shows one. That restores
-the cached copy; then retry the update or uninstall. Opening the MSI, or choosing Repair or Uninstall on it, may still
-fail. Error 1603 has other causes too; if this doesn't help, open an issue with the error message.
-
-### macOS
-
-| Build | File | Notes |
-|---|---|---|
-| App, universal (Apple silicon + Intel) | `lightcraft-<ver>-macos-universal.dmg` | Signed and notarized |
-| Command-line tool, universal | `lightcraft-cli-<ver>-macos-universal.zip` | Signed and notarized |
-
-### Linux
-
-| Format | x86_64 | aarch64 (ARM64) | Notes |
-|---|---|---|---|
-| AppImage | `lightcraft-<ver>-linux-x86_64.AppImage` | `lightcraft-<ver>-linux-aarch64.AppImage` | Portable; updates with [AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) (`.zsync` files) |
-| Flatpak | `lightcraft-<ver>-linux-x86_64.flatpak` | `lightcraft-<ver>-linux-aarch64.flatpak` | Sandboxed; `flatpak install --user <file>` |
-| Debian/Ubuntu | `lightcraft-<ver>-linux-x86_64.deb` | `lightcraft-<ver>-linux-aarch64.deb` | |
-| Fedora/RHEL/openSUSE | `lightcraft-<ver>-linux-x86_64.rpm` | `lightcraft-<ver>-linux-aarch64.rpm` | |
-| Tarball | `lightcraft-<ver>-linux-x86_64.tar.gz` | `lightcraft-<ver>-linux-aarch64.tar.gz` | Unpack anywhere |
-
-RISC-V (riscv64): `lightcraft-<ver>-linux-riscv64.tar.gz`, a tarball only (glibc 2.39 or newer, e.g. Ubuntu 24.04+).
+On other systems (Windows, macOS, other Linux distributions, FreeBSD, the web) build this branch from source, see
+[Quick start](#quick-start). The official LightCraft builds for all of them, without Convert Negative, are on the
+[original releases page](https://github.com/storytold/lightcraft/releases).
 
 On a Wayland desktop LightCraft runs through XWayland when it is available, because only X11 gives
 windows file drag-and-drop; set `LIGHTCRAFT_WAYLAND=1` to use native Wayland (sharper fractional scaling, no drop).
-
-### FreeBSD
-
-| Build | File |
-|---|---|
-| x86_64 | `lightcraft-<ver>-freebsd-x86_64.tar.gz` |
-
-### Web (WebAssembly)
-
-| Build | File | Notes |
-|---|---|---|
-| Static site | `lightcraft-web-<ver>.zip` | Runs in a modern browser; host it on any static server |
 
 <br>
 
 ## The Crafting Apps
 
-LightCraft is one of the **Crafting Apps**: free, open-source creative tools from the
-[ArtCraft](https://getartcraft.com/) team, each written from scratch in Rust and each able to
-stand on its own.
-
-| | App | What it's for | Code | Learn more |
-|:-:|---|---|---|---|
-| <img src="https://raw.githubusercontent.com/storytold/photocraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.photocraft.png" alt="" width="32" height="32"> | **PhotoCraft** | Image editing: layers, masks, type and real PSD files | [GitHub](https://github.com/storytold/photocraft) | [Website](https://getartcraft.com/apps/photocraft) |
-| <img src="https://raw.githubusercontent.com/storytold/vectorcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.vectorcraft.png" alt="" width="32" height="32"> | **VectorCraft** | Vector illustration | [GitHub](https://github.com/storytold/vectorcraft) | [Website](https://getartcraft.com/apps/vectorcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/filmcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.filmcraft.png" alt="" width="32" height="32"> | **FilmCraft** | Video editing, color and sound | [GitHub](https://github.com/storytold/filmcraft) | [Website](https://getartcraft.com/apps/filmcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/lightcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.lightcraft.png" alt="" width="32" height="32"> | **LightCraft** | Photo library and raw development | [GitHub](https://github.com/storytold/lightcraft) | [Website](https://getartcraft.com/apps/lightcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/pdfcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.pdfcraft.png" alt="" width="32" height="32"> | **PdfCraft** | Reading, organizing and protecting PDFs | [GitHub](https://github.com/storytold/pdfcraft) | [Website](https://getartcraft.com/apps/pdfcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/effectcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.effectcraft.png" alt="" width="32" height="32"> | **EffectCraft** | Motion graphics and visual effects | [GitHub](https://github.com/storytold/effectcraft) | [Website](https://getartcraft.com/apps/effectcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/designcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.designcraft.png" alt="" width="32" height="32"> | **DesignCraft** | Page layout and publishing | [GitHub](https://github.com/storytold/designcraft) | [Website](https://getartcraft.com/apps/designcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/figcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.figcraft.png" alt="" width="32" height="32"> | **FigCraft** | Interface design and prototyping | [GitHub](https://github.com/storytold/figcraft) | [Website](https://getartcraft.com/apps/figcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/wordcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.wordcraft.png" alt="" width="32" height="32"> | **WordCraft** | Word processing and documents | [GitHub](https://github.com/storytold/wordcraft) | [Website](https://getartcraft.com/apps/wordcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/soundcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.soundcraft.png" alt="" width="32" height="32"> | **SoundCraft** | Audio recording and editing | [GitHub](https://github.com/storytold/soundcraft) | [Website](https://getartcraft.com/apps/soundcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/deckcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.deckcraft.png" alt="" width="32" height="32"> | **DeckCraft** | Presentations and slide decks | [GitHub](https://github.com/storytold/deckcraft) | [Website](https://getartcraft.com/apps/deckcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/cadcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.cadcraft.png" alt="" width="32" height="32"> | **CADCraft** | Computer-aided design | [GitHub](https://github.com/storytold/cadcraft) | [Website](https://getartcraft.com/apps/cadcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/gridcraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.gridcraft.png" alt="" width="32" height="32"> | **GridCraft** | Spreadsheets and data | [GitHub](https://github.com/storytold/gridcraft) | [Website](https://getartcraft.com/apps/gridcraft) |
-| <img src="https://raw.githubusercontent.com/storytold/texturecraft/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.texturecraft.png" alt="" width="32" height="32"> | **TextureCraft** | 3D texture painting | [GitHub](https://github.com/storytold/texturecraft) | [Website](https://getartcraft.com/apps/texturecraft) |
-| <img src="https://raw.githubusercontent.com/storytold/craft-anything/main/assets/app-icon/hicolor/64x64/apps/ai.storyteller.craft-anything.png" alt="" width="32" height="32"> | **Craft Anything** | See how any software works, then build your own | [GitHub](https://github.com/storytold/craft-anything) | [Website](https://getartcraft.com/apps/craft-anything) |
-| <img src="https://raw.githubusercontent.com/tangency-labs/solidcraft/main/assets/icons/app/linux/exports/hicolor/64x64/apps/io.tangencylabs.solidcraft.png" alt="" width="32" height="32"> | **SolidCraft** | Parametric 3D CAD by Tangency Labs (community app) | [GitHub](https://github.com/tangency-labs/solidcraft) | |
-
-And [**ArtCraft**](https://getartcraft.com/) itself, our AI image and video studio for artists who want real control.
-
-<br>
+The original LightCraft is one of the Crafting Apps, open-source creative tools by the ArtCraft team; they are listed
+in [the original README](https://github.com/storytold/lightcraft#the-crafting-apps). This build is not one of them.
 
 The original LightCraft's community meets on the ArtCraft team's channels, linked from
 [storytold/lightcraft](https://github.com/storytold/lightcraft). Questions about this build go to its
@@ -706,7 +659,7 @@ a modified version, this fork does not carry the logos.
   <a href="https://github.com/FotoFieber">FotoFieber</a>.</sub>
 </p>
 
-## Star history
+## Star history (original LightCraft)
 
 [![Star History Chart](https://api.star-history.com/svg?repos=storytold/lightcraft&type=Date&legend=top-left)](https://www.star-history.com/?repos=storytold%2Flightcraft&type=date&legend=top-left)
 
