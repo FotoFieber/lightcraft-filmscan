@@ -77,5 +77,7 @@ VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "ve
 DEB="lightcraft-$VERSION-linux-x86_64.deb"
 [[ -f "$OUT/$DEB" ]] || { echo "error: $OUT/$DEB was not written" >&2; exit 1; }
 (cd "$OUT" && sha256sum "$DEB" >SHA256SUMS.txt)
+# The commit the .deb was built from; publish.sh refuses to publish it with other source.
+echo "$SHA" >"$OUT/BUILT_FROM"
 echo "==> $OUT/$DEB"
 cat "$OUT/SHA256SUMS.txt"

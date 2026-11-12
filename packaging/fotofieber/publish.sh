@@ -25,9 +25,12 @@ BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD)"
 [[ -s "$NOTES" ]] || { echo "error: $NOTES missing; run release-notes.sh $BASE > $NOTES and read it" >&2; exit 1; }
 [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]] || { echo "error: uncommitted changes" >&2; exit 1; }
 (cd "$OUT" && sha256sum -c SHA256SUMS.txt)
-# The .deb must be built from HEAD: its control data holds no commit, so compare the binary's.
-built="$(dpkg-deb --fsys-tarfile "$DEB" | tar -xO ./usr/bin/lightcraft-cli | strings | grep -m1 -o "$(git -C "$ROOT" rev-parse HEAD)" || true)"
-[[ -n "$built" ]] || { echo "error: $DEB was not built from HEAD; rebuild" >&2; exit 1; }
+# The .deb must be built from the source being tagged: only this release tooling may differ.
+built="$(cat "$OUT/BUILT_FROM" 2>/dev/null || true)"
+if [[ -z "$built" ]] || ! git -C "$ROOT" diff --quiet "$built" HEAD -- . ':(exclude)packaging/fotofieber'; then
+  echo "error: $DEB was not built from this source (built from '${built:-?}'); rebuild" >&2
+  exit 1
+fi
 # Public commits carry only the address chosen for this build.
 if git -C "$ROOT" log --format='%ae%n%ce' "$BASE..HEAD" | grep -q '@fotofieber.ch' &&
    git -C "$ROOT" log --format='%ae%n%ce' "$BASE..HEAD" | grep '@fotofieber.ch' | grep -qv '^lightcraft@fotofieber.ch$'; then
