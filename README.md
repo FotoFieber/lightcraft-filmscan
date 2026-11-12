@@ -5,6 +5,10 @@
 > negative and slide scans to positives, **Zap!** (find the frame on a camera scan, straighten, crop and measure the
 > film base in one step) and a **roll mode** that measures several frames together.
 >
+> - **Why this fork exists:** it is a playground for Linux users to explore film development features (turning
+>   negative and slide scans into positives, Zap!, the roll mode) and to give feedback on them, before they may
+>   come to LightCraft itself. What proves useful is meant to go upstream; once LightCraft ships these features,
+>   the official version is the one to use.
 > - **Download:** a `.deb` for Debian, Ubuntu, Mint, Zorin and others (x86_64, glibc ≥ 2.35) on the
 >   [releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases); each release names the upstream version it
 >   is based on and lists every change, commit by commit.
@@ -82,7 +86,8 @@
 
 ## Film scans: Convert Negative (this build)
 
-Camera and scanner scans of film become positives inside LightCraft, non-destructively like every other edit.
+This build is a playground for trying these features on Linux before they may come to LightCraft itself: camera and
+scanner scans of film become positives inside LightCraft, non-destructively like every other edit.
 
 - **Photo ▸ Film Scan ▸ Zap!…** finds the frame on the scan, straightens and crops it (35 mm with or without the
   sprocket holes, medium format, slides, or the whole film) and measures the film base on the rebate, for one photo

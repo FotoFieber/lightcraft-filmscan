@@ -5,11 +5,13 @@
 #   packaging/fotofieber/release-notes.sh v0.21.1 > dist/fotofieber/notes.md
 #
 # <upstream-tag> is the storytold/lightcraft release this build is based on. Every commit in
-# <upstream-tag>..HEAD is listed by where it comes from: an open upstream pull request, or this fork.
+# <upstream-tag>..[ref] (default HEAD) is listed by where it comes from: an open upstream pull request, or this fork.
 # Screenshots in dist/fotofieber/screenshots/*.png are embedded from the release's assets.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BASE="${1:?usage: release-notes.sh <upstream-tag>}"
+BASE="${1:?usage: release-notes.sh <upstream-tag> [ref]}"
+# The build's commit: HEAD, or a published tag when rewriting that release's notes.
+REF="${2:-HEAD}"
 FORK=FotoFieber/lightcraft-filmscan
 UPSTREAM=storytold/lightcraft
 TAG="$BASE-filmscan"
@@ -23,9 +25,9 @@ PRS=(
   "Convert Negative 4/4:|3987"
 )
 
-commits() { git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$BASE..HEAD"; }
+commits() { git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$BASE..$REF"; }
 line() { printf -- '- %s ([`%s`](https://github.com/%s/commit/%s))\n' "$3" "${1:0:8}" "$FORK" "$1"; }
-first() { git -C "$ROOT" log --reverse --no-merges --format='%H' --grep="$1" "$BASE..HEAD" | head -1; }
+first() { git -C "$ROOT" log --reverse --no-merges --format='%H' --grep="$1" "$BASE..$REF" | head -1; }
 short() { local h; h="$(first "$1")"; [[ -n "$h" ]] && printf '[`%s`](https://github.com/%s/commit/%s)' "${h:0:8}" "$FORK" "$h"; }
 
 pr_of() {
@@ -86,6 +88,11 @@ This is **not an official LightCraft release**. It is based on
 [LightCraft $BASE](https://github.com/$UPSTREAM/releases/tag/$BASE) by the ArtCraft team and the LightCraft
 contributors (MIT OR Apache-2.0), plus the changes listed below. Report problems with this build
 [here](https://github.com/$FORK/issues), not upstream.
+
+**Why this fork exists:** it is a playground for Linux users to explore film development features (turning negative
+and slide scans into positives, Zap!, the roll mode) and to give feedback on them, before they may come to
+LightCraft itself. What proves useful is meant to go upstream; once LightCraft ships these features, the official
+version is the one to use.
 
 ## Download
 
