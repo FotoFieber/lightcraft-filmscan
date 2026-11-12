@@ -36,7 +36,7 @@ festgelegt. Neue Texte verwenden sie ebenfalls:
 | Upright | Perspektivkorrektur | |
 | Smart Album | Smart-Album | |
 | Activity stack | Aktivitätsstapel | |
-| Convert Negative / Film base | Negativ umwandeln / Filmbasis | „Zap!“ bleibt als Name stehen |
+| Film Scan / Convert Without Cropping / Film base | Filmscan / Umwandeln ohne Zuschnitt / Filmbasis | „Zap!“ bleibt als Name stehen |
 
 Typografie: Gedankenstrich mit Leerzeichen als Halbgeviertstrich (` – `), Auslassungspunkte
 ohne Leerzeichen direkt am Wort (`Importieren…`), deutsche Anführungszeichen („…“). „Ihre“

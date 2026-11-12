@@ -146,7 +146,7 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("panel.remove", "Remove", Some("H"), "Window"),
     ("panel.masking", "Masking", Some("M"), "Window"),
     ("panel.redeye", "Red Eye", None, "Window"),
-    ("panel.negative", "Convert Negative", None, ""),
+    ("panel.negative", "Film Scan", None, ""),
     ("panel.presets", "Presets", Some("Shift+P"), "Window"),
     ("panel.info", "Info", Some("I"), "Window"),
     ("panel.keywords", "Keywords", Some("K"), "Window"),
@@ -284,10 +284,10 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     ("dialog.rename", "Rename Photos…", Some("F2"), "Photo"),
     ("dialog.labelNames", "Edit Color Label Names…", None, ""),
     ("dialog.captureTime", "Edit Capture Time…", None, "Photo"),
-    // the active photo is a film negative: switch the conversion on and open its panel
-    ("photo.convertNegative", "Convert Negative", None, "Photo"),
-    // Zap! on the selection, with its choices asked first
-    ("dialog.negativeZap", "Zap!…", None, "Photo"),
+    // Photo ▸ Film Scan: the active photo's conversion switched on as it is cropped, and its panel
+    // opened, or (the usual way, after a separator as a dialog) Zap! on the selection, its choices asked first
+    ("photo.convertNegative", "Convert Without Cropping", None, "Photo>Film Scan"),
+    ("dialog.negativeZap", "Zap!…", None, "Photo>Film Scan"),
     ("photo.tagFromTracklog", "Auto-Tag from Tracklog…", None, "Photo"),
     ("app.exportPrevious", "Export with Previous", Some("Cmd+Alt+Shift+E"), "File"),
 ];

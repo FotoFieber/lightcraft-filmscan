@@ -972,7 +972,7 @@ fn ui_commands_7(app: &mut LightcraftApp, ctx: &egui::Context, id: &str, p: &Val
             Ok(Value::Null)
         }
         "panel.negative" => {
-            panel(app, ctx, RightPanel::Negative, "Convert Negative");
+            panel(app, ctx, RightPanel::Negative, "Film Scan");
             Ok(Value::Null)
         }
         "panel.info" => {

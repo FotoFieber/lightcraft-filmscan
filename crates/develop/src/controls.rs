@@ -51,7 +51,7 @@ impl Section {
             Section::Calibration => "Calibration",
             Section::PointColor => "Point Color",
             Section::RedEye => "Red Eye",
-            Section::Negative => "Convert Negative",
+            Section::Negative => "Film Scan",
             Section::LensBlur => "Lens Blur",
         }
     }

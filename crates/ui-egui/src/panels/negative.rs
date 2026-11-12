@@ -1,4 +1,4 @@
-//! The Convert Negative panel (Photo ▸ Convert Negative): a scanned film negative as a positive.
+//! The Film Scan panel (Photo ▸ Film Scan): a scanned film negative as a positive.
 //!
 //! Simple shows the film preset and six sliders. Advanced adds the film base and a gray point
 //! picked from the scan with the selector (the `negBase` / `negGray` canvas tools, which run
@@ -178,7 +178,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId) {
     let d = app.session.develop_of(id).unwrap_or_default();
     let n = d.negative.clone();
     let t = Tokens::get(ui.ctx());
-    header(ui, "Convert Negative");
+    header(ui, "Film Scan");
     padded(ui, |ui| {
         let mut on = n.enabled;
         let r = ui.checkbox(&mut on, tr("Film negative"));

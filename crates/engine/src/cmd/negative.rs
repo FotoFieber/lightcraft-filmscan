@@ -107,7 +107,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(
             "develop.negative",
-            "Convert Negative",
+            "Film Scan",
             [],
             None,
             "{on?: bool (default true), advanced?: bool, preset?: film preset name, tone?, look?, wb?: names (\"\" = the preset's), measure?: bool (measure the scan again), border?: 0..45 (% of each edge the measurement leaves out, default 8), clearBase?: bool, clearGray?: bool} — the photo is a film negative, converted to a positive; switching it on measures the scan → the conversion",
@@ -136,7 +136,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 // Measured when the conversion goes on without a measurement, or on request.
                 let measured = if on && (remeasure || current.measured.is_none()) { Some(measure(s, id, border, c)?) } else { None };
                 let mut out = Value::Null;
-                super::develop::edit(s, c, "Convert Negative", |d: &mut DevelopSettings| {
+                super::develop::edit(s, c, "Film Scan", |d: &mut DevelopSettings| {
                     let n = &mut d.negative;
                     n.enabled = on;
                     if let Some(a) = p.get("advanced").and_then(Value::as_bool) {

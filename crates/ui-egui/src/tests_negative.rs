@@ -1,4 +1,4 @@
-//! Headless tests of Convert Negative: Photo ▸ Convert Negative switches the conversion on and
+//! Headless tests of Convert Negative: Photo ▸ Film Scan ▸ Convert Without Cropping switches the conversion on and
 //! opens its panel, Simple / Advanced switch the panel, and the Film Base selector samples the
 //! photo where it is clicked.
 
@@ -23,7 +23,17 @@ fn photo_menu_opens_the_panel_and_the_selector_picks_the_film_base() {
     let app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), Services { png: None, ..Default::default() });
     let mut h = Headless::new(app, [1400.0, 900.0], 1.0);
     let tree = h.request("ui.menu.tree", json!({}), T);
-    assert!(tree.to_string().contains("Convert Negative"), "listed in the menus");
+    assert!(tree.to_string().contains("Film Scan"), "listed in the menus");
+    use crate::menubar::MenuNode;
+    let bar = crate::menubar::menu_bar(&h.app);
+    let photo = &bar.iter().find(|(t, _)| t == "Photo").expect("a Photo menu").1;
+    let Some(MenuNode::Submenu { children, .. }) = photo.iter().find(|n| matches!(n, MenuNode::Submenu { label, .. } if label == "Film Scan")) else {
+        panic!("no Photo ▸ Film Scan in {photo:?}")
+    };
+    let ids: Vec<&str> = children.iter().filter_map(|n| if let MenuNode::Item { id, .. } = n { Some(id.as_str()) } else { None }).collect();
+    // the menus put a command that opens a dialog last, after a separator
+    assert_eq!(ids, ["photo.convertNegative", "dialog.negativeZap"], "the conversion without cropping, then Zap!…");
+    assert!(!photo.iter().any(|n| matches!(n, MenuNode::Item { id, .. } if id == "photo.convertNegative")), "only in the submenu");
     let r = h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
     assert_eq!(r["ok"], true, "{r}");
     h.settle(SETTLE);

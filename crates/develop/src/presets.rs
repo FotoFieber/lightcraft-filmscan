@@ -100,7 +100,7 @@ impl SettingsGroup {
             SettingsGroup::RedEye => "Red Eye",
             SettingsGroup::LensBlur => "Lens Blur",
             SettingsGroup::Calibration => "Calibration",
-            SettingsGroup::Negative => "Convert Negative",
+            SettingsGroup::Negative => "Film Scan",
         }
     }
 

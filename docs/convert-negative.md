@@ -1,14 +1,16 @@
 # Convert Negative
 
-**Photo ▸ Convert Negative** renders a scan of a film negative (a camera or scanner capture of colour
+**Photo ▸ Film Scan** renders a scan of a film negative (a camera or scanner capture of colour
 or black-and-white film) as a positive. The conversion is part of the photo's edit, like every other
 setting: it is non-destructive, it can be switched off, copied to the other frames of a roll, synced,
 saved in a preset and undone, and previews and exports convert with the same numbers.
 
 ## Using it
 
-1. Select the scan and choose **Photo ▸ Convert Negative**. The conversion goes on and the **Convert
-   Negative** panel opens. Switching it on measures the scan once: the film base (the unexposed film,
+1. Select the scans and choose **Photo ▸ Film Scan ▸ Zap!…**: it finds each frame, straightens and crops
+   to it and takes the film base from the rebate. For a scan already cropped to its frame, choose
+   **Photo ▸ Film Scan ▸ Convert Without Cropping** instead. The conversion goes on and the **Film
+   Scan** panel opens. Switching it on measures the scan once: the film base (the unexposed film,
    orange on colour negative film), each channel's black and white point, and a balance that makes the
    scene average grey. The measurement looks inside the crop, 8 % in from each edge, so the film holder
    and the sprocket holes stay out of it.
@@ -29,7 +31,7 @@ saved in a preset and undone, and previews and exports convert with the same num
 4. **Measure Again** after cropping to the frame (or when the first measurement took in the holder).
    **Done** closes the panel. Everything else in the Edit panel then edits the positive.
 
-To convert a roll, convert one frame, then **Copy Edit Settings** with **Convert Negative** ticked and
+To convert a roll, convert one frame, then **Copy Edit Settings** with **Film Scan** ticked and
 paste or sync to the rest: they convert with that frame's measurement, as a lab scans a roll.
 
 ## How it works
@@ -52,7 +54,8 @@ are their makers' trademarks and only say which stock a recipe takes after.
 
 | Command | What it does |
 |---|---|
-| `photo.convertNegative` | Photo ▸ Convert Negative: switches the conversion on and opens the panel |
+| `photo.convertNegative` | Photo ▸ Film Scan ▸ Convert Without Cropping: switches the conversion on and opens the panel |
+| `dialog.negativeZap` | Photo ▸ Film Scan ▸ Zap!…: asks for the film, format, sprocket holes and edge, then runs `develop.negativeZap` on the selection |
 | `develop.negative` | `{on?, advanced?, preset?, tone?, look?, wb?, measure?, border?, clearBase?, clearGray?}` |
 | `develop.negativePick` | `{x, y, target?: base\|gray}`: the film base or gray point from the scan at a normalized point |
 | `develop.set` | the sliders: `negative.exposure`, `.brightness`, `.contrast`, `.temp`, `.tint`, `.saturation`, `.highlights`, `.shadows`, `.whites`, `.blacks`, `.fade`, `.glow`, `.range` |
