@@ -288,3 +288,44 @@ fn zap_as_one_roll_from_the_dialog_and_release_from_the_panel() {
     assert_eq!(h.app.session.develop_of(ids[1]).unwrap().negative.roll, Some(3), "the others stay in the roll");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The Film Scan panel fits the right panel at every width, in English and in German: Zap!'s
+/// choices wrap instead of widening the panel, which pushed the sliders' values out of sight.
+#[test]
+fn the_film_scan_panel_fits_the_right_panel() {
+    let app = LightcraftApp::new(lightcraft_engine::Session::with_demo(), Services { png: None, ..Default::default() });
+    let mut h = Headless::new(app, [1400.0, 900.0], 1.0);
+    let r = h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    assert_eq!(h.app.ui.right, RightPanel::Negative);
+    // Advanced shows every row: the film base, the Tone / Color / White Balance choices
+    let r = h.request("ui.clickWidget", json!({"id": "button:negativeMode-advanced"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    for language in ["en", "de"] {
+        assert_eq!(h.request("ui.set", json!({"language": language}), T)["ok"], true);
+        for width in [crate::state::RIGHT_WIDTH.min, crate::state::RIGHT_WIDTH.default] {
+            h.request("ui.set", json!({"rightWidth": width}), T);
+            h.step();
+            h.step();
+            let panel = h.app.widgets.iter().find(|(id, _)| id == "panel:right_panel").expect("the right panel").1;
+            let ours: Vec<_> = h
+                .app
+                .widgets
+                .iter()
+                .filter(|(id, _)| id.contains("negative") && !["panel:", "film:", "icon:"].iter().any(|p| id.starts_with(p)))
+                .collect();
+            assert!(ours.iter().any(|(id, _)| id == "sliderValue:negative.exposure"), "{language} {width}: the sliders are drawn");
+            assert!(ours.iter().any(|(id, _)| id == "dropdown:negative-zapFilm"), "{language} {width}: Zap!'s choices are drawn");
+            assert!(ours.iter().any(|(id, _)| id == "dropdown:negative-tone"), "{language} {width}: the Advanced rows are drawn");
+            for (id, r) in &ours {
+                assert!(r.right() <= panel.right() + 0.5, "{language} {width}: {id} {r:?} sticks out of the panel {panel:?}");
+            }
+            // and nothing widened the contents: every slider's value ends at the same edge
+            let values: Vec<_> = ours.iter().filter(|(id, _)| id.starts_with("sliderValue:negative.")).map(|(id, r)| (id, r.right())).collect();
+            let edge = values[0].1;
+            assert!(values.iter().all(|(_, right)| (right - edge).abs() < 0.5), "{language} {width}: values end at different edges: {values:?}");
+        }
+    }
+}

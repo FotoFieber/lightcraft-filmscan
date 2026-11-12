@@ -71,7 +71,8 @@ fn set(app: &mut LightcraftApp, ui: &egui::Ui, p: Value) {
 }
 
 /// A labelled dropdown of `options` (value, label) plus "From Preset" (the empty value) when
-/// `from_preset` names what the preset uses; picking one sets `key`.
+/// `from_preset` names what the preset uses; picking one sets `key`. The row wraps, like Zap!'s, so a
+/// long "From Preset (…)" never widens the panel; one too long for a row of its own is cut short.
 fn choice(app: &mut LightcraftApp, ui: &mut egui::Ui, key: &str, label: &str, current: &str, options: &[(&str, &str)], from_preset: Option<&str>) {
     let t = Tokens::get(ui.ctx());
     let shown = match (current, from_preset) {
@@ -79,9 +80,9 @@ fn choice(app: &mut LightcraftApp, ui: &mut egui::Ui, key: &str, label: &str, cu
         (v, _) => tr(options.iter().find(|(k, _)| *k == v).map_or("From Preset", |(_, l)| *l)).to_string(),
     };
     padded(ui, |ui| {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(tr(label)).font(t.font(13.0)).color(t.text_dim));
-            let r = crate::widgets::dropdown(ui, &format!("negative-{key}"), &shown, t.font(14.0), t.text_label);
+            let r = crate::widgets::dropdown_within(ui, &format!("negative-{key}"), &shown, t.font(14.0), t.text_label, ui.max_rect().width());
             egui::Popup::menu(&r).show(|ui| {
                 if from_preset.is_some() && ui.selectable_label(current.is_empty(), tr("From Preset")).clicked() {
                     set(app, ui, json!({ key: "" }));
@@ -141,7 +142,8 @@ fn picker_row(app: &mut LightcraftApp, ui: &mut egui::Ui, tool: &str, label: &st
 pub(crate) fn zap_choice(ui: &mut egui::Ui, key: &str, tip: &str, current: &mut String, options: &[(&str, &str)]) {
     let t = Tokens::get(ui.ctx());
     let shown = options.iter().find(|(v, _)| *v == current.as_str()).or(options.first()).map_or("", |(_, l)| *l);
-    let r = crate::widgets::dropdown(ui, key, tr(shown), t.font(13.0), t.text_label).on_hover_text(tr(tip));
+    let max = ui.max_rect().width();
+    let r = crate::widgets::dropdown_within(ui, key, tr(shown), t.font(13.0), t.text_label, max).on_hover_text(tr(tip));
     egui::Popup::menu(&r).show(|ui| {
         for (value, name) in options {
             if ui.selectable_label(current == value, tr(name)).clicked() {
@@ -152,10 +154,11 @@ pub(crate) fn zap_choice(ui: &mut egui::Ui, key: &str, tip: &str, current: &mut 
 }
 
 /// Zap!: find the picture, straighten and crop to it and take the film base from the rebate (one
-/// undo step), with where the crop sits and the film format beside it.
+/// undo step), with where the crop sits and the film format beside it. The rows wrap: a row wider
+/// than the panel would widen its contents and push the sliders' values out of sight.
 fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     padded(ui, |ui| {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let tip = "Find the frame on the scan, straighten and crop to it and pick the film base. A crop of your own stays";
             if text_button(ui, "negative-zap", "Zap!", false).on_hover_text(tr(tip)).clicked() {
                 let u = &app.ui;
@@ -168,7 +171,7 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             zap_choice(ui, "negative-zapMargin", "Where the crop sits on the frame's edge", &mut app.ui.negative_zap_margin, &MARGINS);
             zap_choice(ui, "negative-zapFormat", "The film format, for an edge the scan doesn't show", &mut app.ui.negative_zap_format, &formats);
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let tip = "Whether the crop keeps 35 mm film's sprocket holes";
             zap_choice(ui, "negative-zapSprockets", tip, &mut app.ui.negative_zap_sprockets, &SPROCKETS);
             zap_choice(ui, "negative-zapFilm", "A slide is only cropped, never converted", &mut app.ui.negative_zap_film, &FILMS);
