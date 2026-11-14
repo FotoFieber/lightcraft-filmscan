@@ -149,29 +149,31 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
         return slide(before, found, dims, o, (ow, oh));
     }
     // a roll's frames keep what their measurement read, to be measured together
-    let samples = |r: Rect, border: f64, base: Option<[f64; 3]>| -> Result<Option<Box<RollSamples>>, String> {
+    let samples = |g: CropGeometry, border: f64, base: Option<[f64; 3]>| -> Result<Option<Box<RollSamples>>, String> {
         if !o.roll {
             return Ok(None);
         }
-        Ok(Some(Box::new(RollSamples { samples: sample_in(&oriented, r, border, base)?, base })))
+        Ok(Some(Box::new(RollSamples { samples: sample_in(scan, before, g, border, base)?, base })))
     };
+    // the picture as the crop shows it: in the frame turned by the frame's angle
+    let picture_of = |f: &Frame| CropGeometry { rect: picture(f), angle: f.angle };
     if own_crop(before) {
         let geometry = before.crop.geometry;
-        let (r, border, frame) = match &found {
-            Ok(f) => (picture(f), 0.0, Some(f)),
-            Err(_) => (geometry.rect, OWN_CROP_BORDER, None),
+        let (g, border, frame) = match &found {
+            Ok(f) => (picture_of(f), 0.0, Some(f)),
+            Err(_) => (geometry, OWN_CROP_BORDER, None),
         };
-        let settings = converted(before, measure_in(&oriented, r, border)?, frame.and_then(|f| f.base));
-        let samples = samples(r, border, frame.and_then(|f| f.base))?;
+        let settings = converted(before, measure_in(scan, before, g, border)?, frame.and_then(|f| f.base));
+        let samples = samples(g, border, frame.and_then(|f| f.base))?;
         return Ok(Zapped { settings, report: report(&geometry, frame, true), samples });
     }
     let frame = found?;
     let geometry = crop_of(&frame, dims, o, (ow, oh))?;
-    let measured = measure_in(&oriented, picture(&frame), 0.0)?;
+    let measured = measure_in(scan, before, picture_of(&frame), 0.0)?;
     let mut settings = converted(before, measured, frame.base);
     settings.crop.geometry = geometry;
     settings.negative.zap_crop = Some(geometry);
-    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples: samples(picture(&frame), 0.0, frame.base)? })
+    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples: samples(picture_of(&frame), 0.0, frame.base)? })
 }
 
 /// The crop Zap! sets for `frame` on a scan of oriented size `dims` (analysed at `analysed`).
@@ -235,22 +237,37 @@ fn report(geometry: &CropGeometry, frame: Option<&Frame>, kept: bool) -> Value {
     })
 }
 
-/// Measures the oriented scan `o` inside `r` (normalized), `border` in from each edge.
-pub fn measure_in(o: &Rgb32f, r: Rect, border: f64) -> Result<NegativeMeasurement, String> {
-    lightcraft_pipeline::negative::measure(&framed(o, r), border)
+/// Measures `scan` (the photo's source, before orientation, with settings `d`) inside the crop
+/// `g`, straightened as the render shows it, `border` in from each edge. Measure Again and Zap!
+/// both measure here, so a turned crop reads the same pixels either way.
+pub fn measure_in(scan: &Rgb32f, d: &DevelopSettings, g: CropGeometry, border: f64) -> Result<NegativeMeasurement, String> {
+    lightcraft_pipeline::negative::measure(&framed(scan, d, g), border)
 }
 
 /// The samples [`measure_in`] reads, at most a roll frame's share, relative to `base`.
-fn sample_in(o: &Rgb32f, r: Rect, border: f64, base: Option<[f64; 3]>) -> Result<ValueHistogram, String> {
-    lightcraft_pipeline::negative::sample(&framed(o, r), border, base)
+fn sample_in(scan: &Rgb32f, d: &DevelopSettings, g: CropGeometry, border: f64, base: Option<[f64; 3]>) -> Result<ValueHistogram, String> {
+    lightcraft_pipeline::negative::sample(&framed(scan, d, g), border, base)
 }
 
-/// The oriented scan `o` inside `r` (normalized; all of it when `r` holds no pixel).
-fn framed(o: &Rgb32f, r: Rect) -> Rgb32f {
+/// The pixels of `scan` inside the crop `g` of a photo with settings `d`. A turned crop is not a
+/// box of the scan: it is sampled straightened, as the render does. Else the plain box of the
+/// oriented scan (all of it when the box holds no pixel).
+fn framed(scan: &Rgb32f, d: &DevelopSettings, g: CropGeometry) -> Rgb32f {
+    if g.angle.is_finite() && g.angle != 0.0 {
+        let mut d = d.clone();
+        d.crop.geometry = g;
+        let frame = lightcraft_pipeline::frame_for(scan, &lightcraft_pipeline::SourceInfo::default(), &d, true);
+        let r = frame.crop.rect_px(frame.ow, frame.oh);
+        // (a NaN side rounds to 0 and so becomes 1)
+        let side = |v: f64| (v.round() as usize).clamp(1, 16384);
+        return frame.sample(scan, side(r.x1 - r.x0), side(r.y1 - r.y0));
+    }
+    let o = scan.oriented(d.orientation);
+    let r = g.rect;
     let (w, h) = (o.width as f64, o.height as f64);
     let at = |v: f64, n: f64| if v.is_finite() { (v.clamp(0.0, 1.0) * n).round() as usize } else { 0 };
     let (x0, y0, x1, y1) = (at(r.x0, w), at(r.y0, h), at(r.x1, w), at(r.y1, h));
-    if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o.clone() }
+    if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o }
 }
 
 /// Film bases whose colour differs by more than this (in any channel, as a ratio, after their

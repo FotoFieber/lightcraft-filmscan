@@ -4,7 +4,6 @@
 
 use lightcraft_catalog::{Op, PhotoId};
 use lightcraft_develop::{DevelopSettings, Negative};
-use lightcraft_geom::Rect;
 use lightcraft_pipeline::negative::film::{Look, Preset, Tone, WbPreset};
 use serde_json::{Value, json};
 
@@ -47,8 +46,8 @@ fn flag(p: &Value, key: &str, c: &str) -> Result<Option<bool>> {
 /// the measurement it sits next to come from the same pixels.
 const SCAN: SourceLevel = SourceLevel::Preview;
 
-/// Measures photo `id` inside its crop (the crop's box, straightening left aside), `border` in
-/// from each edge.
+/// Measures photo `id` inside its crop, straightened as the render shows it, `border` in from each
+/// edge.
 fn measure(s: &mut Session, id: crate::PhotoId, border: f64, c: &str) -> Result<lightcraft_develop::NegativeMeasurement> {
     let src = s.source_now(id, SCAN).map_err(|e| bad(c, e))?;
     let d = s.develop_of(id).unwrap_or_default();
@@ -57,12 +56,7 @@ fn measure(s: &mut Session, id: crate::PhotoId, border: f64, c: &str) -> Result<
 
 /// [`measure`] of a scan already read, with the photo's settings `d`.
 fn measure_scan(src: &lightcraft_raster::Rgb32f, d: &DevelopSettings, border: f64, c: &str) -> Result<lightcraft_develop::NegativeMeasurement> {
-    measure_in(&src.oriented(d.orientation), d.crop.geometry.rect, border, c)
-}
-
-/// Measures the oriented scan `o` inside `r` (normalized), `border` in from each edge.
-fn measure_in(o: &lightcraft_raster::Rgb32f, r: Rect, border: f64, c: &str) -> Result<lightcraft_develop::NegativeMeasurement> {
-    negative_zap::measure_in(o, r, border).map_err(|e| bad(c, e))
+    negative_zap::measure_in(src, d, d.crop.geometry, border).map_err(|e| bad(c, e))
 }
 
 /// Zap! on photo `id`, its scan read now.
@@ -163,6 +157,11 @@ pub fn specs() -> Vec<CommandSpec> {
                 let measured = if measuring { Some(measure(s, id, border, c)?) } else { None };
                 let mut out = Value::Null;
                 super::develop::edit(s, c, "Film Scan", |d: &mut DevelopSettings| {
+                    // (switching it on shows it: the eye of the Convert Negative section would
+                    // otherwise keep the conversion off while the command reports it on)
+                    if on {
+                        d.set_section_enabled("negative", true);
+                    }
                     let n = &mut d.negative;
                     n.enabled = on;
                     if let Some(a) = advanced {
@@ -231,20 +230,13 @@ pub fn specs() -> Vec<CommandSpec> {
                 }
                 let (cx, cy) = ((x.clamp(0.0, 1.0) * o.width as f64) as isize, (y.clamp(0.0, 1.0) * o.height as f64) as isize);
                 let r = (o.width.max(o.height) / 200).clamp(2, 32) as isize;
-                let n = ((2 * r + 1) * (2 * r + 1)) as f32;
-                let mut acc = [0.0f32; 3];
-                for dy in -r..=r {
-                    for dx in -r..=r {
-                        let px = o.get_clamped(cx + dx, cy + dy);
-                        for i in 0..3 {
-                            acc[i] += px[i] / n;
-                        }
-                    }
-                }
-                let colour = lightcraft_pipeline::negative::scan_colour(acc);
+                let patch: Vec<[f32; 3]> =
+                    (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| (dx, dy))).map(|(dx, dy)| o.get_clamped(cx + dx, cy + dy)).collect();
+                let colour = lightcraft_pipeline::negative::scan_colour_mean(&patch);
                 let measured = if d.negative.measured.is_none() { Some(measure_scan(&src, &d, DEFAULT_BORDER, c)?) } else { None };
                 let mut out = Value::Null;
                 super::develop::edit(s, c, if gray { "Gray Point" } else { "Film Base" }, |d: &mut DevelopSettings| {
+                    d.set_section_enabled("negative", true);
                     let n = &mut d.negative;
                     n.enabled = true;
                     n.advanced = true;

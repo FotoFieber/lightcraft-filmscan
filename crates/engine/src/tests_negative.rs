@@ -79,6 +79,28 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Zap! measures a turned frame straightened, as the render shows it and as Measure Again reads
+/// the crop: the box of the scan under a turned crop would take in rebate at its corners.
+#[test]
+fn zap_measures_a_turned_frame_as_measure_again_does() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-turned-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = negative_scan(&dir, 2.5);
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let id = s.active().unwrap();
+    let r = s.execute("develop.negativeZap", &json!({})).unwrap();
+    let d = s.develop_of(id).unwrap();
+    assert!((d.crop.geometry.angle - 2.5).abs() < 0.25, "{r}");
+    let zapped = d.negative.measured.expect("Zap! measures");
+    // Measure Again on Zap!'s crop, which is its picture
+    s.execute("develop.negative", &json!({"measure": true, "border": 0})).unwrap();
+    let again = s.develop_of(id).unwrap().negative.measured.expect("measured again");
+    let close = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(a, b)| (a - b).abs() <= 0.02 * a.abs().max(b.abs()).max(1e-3));
+    assert!(close(zapped.black, again.black) && close(zapped.white, again.white), "{zapped:?} vs {again:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn zap_removes_the_sprocket_holes_or_crops_to_the_whole_film() {
     let dir = std::env::temp_dir().join(format!("lc-zap-holes-{}", std::process::id()));

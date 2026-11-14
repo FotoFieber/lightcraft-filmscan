@@ -205,3 +205,32 @@ fn a_recipe_can_reset_a_negative_slider() {
     let p = s.presets.iter().find(|p| p.id == id).unwrap();
     assert_eq!(p.settings, json!({"negative": {"exposure": 0.0}}));
 }
+
+#[test]
+fn switching_on_turns_the_section_eye_back_on() {
+    let mut s = Session::with_demo();
+    let eye = |s: &Session| s.develop_of(s.active().unwrap()).unwrap().section_enabled("negative");
+    s.execute("develop.sectionEnabled", &json!({"section": "negative", "enabled": false})).unwrap();
+    assert!(!eye(&s));
+    s.execute("develop.negative", &json!({"on": false})).unwrap();
+    assert!(!eye(&s), "off leaves the section as it is");
+    s.execute("develop.negative", &json!({})).unwrap();
+    assert!(eye(&s) && negative(&s).enabled);
+    s.execute("develop.sectionEnabled", &json!({"section": "negative", "enabled": false})).unwrap();
+    s.execute("develop.negativePick", &json!({"x": 0.01, "y": 0.01})).unwrap();
+    assert!(eye(&s), "a pick switches the conversion on and shows it");
+}
+
+/// A straightened crop is measured as the render shows it, not as the box of the unturned scan.
+#[test]
+fn the_measurement_follows_a_straightened_crop() {
+    let mut s = Session::with_demo();
+    s.execute("crop.set", &json!({"rect": [0.1, 0.1, 0.9, 0.9], "angle": 0.0})).unwrap();
+    s.execute("develop.negative", &json!({"on": false, "measure": true})).unwrap();
+    let flat = negative(&s).measured.unwrap();
+    s.execute("crop.set", &json!({"rect": [0.1, 0.1, 0.9, 0.9], "angle": 12.0})).unwrap();
+    s.execute("develop.negative", &json!({"on": false, "measure": true})).unwrap();
+    let turned = negative(&s).measured.unwrap();
+    assert_ne!(flat, turned, "the turned crop covers other pixels");
+    assert!(turned.base.iter().chain(&turned.black).chain(&turned.white).chain(&turned.balance).all(|v| v.is_finite()));
+}

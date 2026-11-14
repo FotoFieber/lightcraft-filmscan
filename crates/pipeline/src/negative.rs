@@ -12,6 +12,8 @@ use lightcraft_develop::{DevelopSettings, Negative, NegativeMeasurement};
 use lightcraft_film::{Analysis, Converter, Encoding, Look, Measurement, Params, Preset, Sliders, Tables, Tone, WbPreset};
 use lightcraft_raster::{Rgb32f, par_rows};
 
+use crate::geometry::Frame;
+
 pub use lightcraft_film as film;
 
 fn to_srgb() -> Mat3 {
@@ -84,7 +86,9 @@ pub fn params(n: &Negative) -> (Params, Analysis) {
     });
     let analysis = match measured {
         Some((a, balance)) => {
-            p.balance = balance;
+            // (a picked gray point states what is neutral: the scene-average balance, which acts
+            // on the mid-tones after the white balance, would tint it again)
+            p.balance = if n.advanced && n.gray.is_some() { [1.0; 3] } else { balance };
             a
         }
         None => Analysis::from_base(picked.unwrap_or_else(|| preset.base_linear()), p.film_gamma),
@@ -104,8 +108,15 @@ pub fn converter(n: &Negative) -> Converter {
     Converter::new(&a, &p, Encoding::Linear, neutral)
 }
 
-/// Converts `img` (linear Rec.2020) in place when the settings convert a negative.
+/// Converts `img` (linear Rec.2020, a plain scan) in place when the settings convert a negative.
 pub fn apply(img: &mut Rgb32f, s: &DevelopSettings) {
+    apply_in(img, s, None);
+}
+
+/// [`apply`] for `img` as the output of `frame`: the blank canvas a lens or perspective warp leaves
+/// around the photo is not film, so it stays as the warp made it. Coverage comes from the warp's
+/// geometry, as in `local_tone::apply`, not from the pixel values.
+pub fn apply_in(img: &mut Rgb32f, s: &DevelopSettings, frame: Option<&Frame>) {
     if !enabled(s) {
         return;
     }
@@ -115,9 +126,13 @@ pub fn apply(img: &mut Rgb32f, s: &DevelopSettings) {
         c.tables(&mut tables);
         let (into, back) = (to_srgb().to_f32(), to_rec2020().to_f32());
         let mul = |m: &[[f32; 3]; 3], v: [f32; 3]| m.map(|r| r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
-        let w = img.width;
-        par_rows(&mut img.data, w, |_, row| {
-            for px in row {
+        let (w, h) = (img.width, img.height);
+        let cover = frame.and_then(|f| f.warp.as_ref().map(|wp| (wp, f.out_to_oriented(w, h))));
+        par_rows(&mut img.data, w, |y, row| {
+            for (x, px) in row.iter_mut().enumerate() {
+                if cover.as_ref().is_some_and(|(wp, o2t)| !wp.covers(o2t, x, y)) {
+                    continue;
+                }
                 let scan = mul(&into, *px).map(unit);
                 *px = mul(&back, c.convert_with(&tables, scan));
             }
@@ -157,6 +172,20 @@ pub fn positive<'a>(src: &'a Rgb32f, s: &DevelopSettings) -> std::borrow::Cow<'a
 /// The linear sRGB colour of a source pixel (linear Rec.2020), as the panel's picker stores it.
 pub fn scan_colour(rec2020: [f32; 3]) -> [f64; 3] {
     to_srgb().apply(rec2020.map(f64::from)).map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 })
+}
+
+/// The picker's colour for a neighbourhood of source pixels (linear Rec.2020): each pixel is taken
+/// to linear sRGB and clamped to 0..1 as [`apply`] does before it converts, then the colours are
+/// averaged. Clamping the average instead would store a colour no rendered pixel has.
+pub fn scan_colour_mean(pixels: &[[f32; 3]]) -> [f64; 3] {
+    let mut acc = [0.0f64; 3];
+    for px in pixels {
+        let c = scan_colour(*px);
+        for i in 0..3 {
+            acc[i] += c[i];
+        }
+    }
+    acc.map(|v| v / pixels.len().max(1) as f64)
 }
 
 /// Measures `src` (linear Rec.2020, the whole scan) as a negative, leaving `border` (a fraction of
@@ -315,6 +344,28 @@ mod tests {
         assert_eq!(simple.data, none.data, "Simple ignores the gray point");
     }
 
+    /// With a measurement whose balance is not neutral, the picked gray still comes out gray.
+    #[test]
+    fn a_picked_gray_stays_gray_with_a_measured_balance() {
+        let (w, h) = (60, 40);
+        let at = w * h / 2 + w / 3;
+        let raw = scan(w, h);
+        let mut measured = measure(&raw, 0.12).unwrap();
+        measured.balance = [0.8, 1.0, 1.25];
+        let negative =
+            Negative { enabled: true, advanced: true, measured: Some(measured), gray: Some(scan_colour(raw.data[at])), ..Negative::default() };
+        let mut s = DevelopSettings { negative, ..DevelopSettings::default() };
+        let spread = |c: [f32; 3]| c.iter().cloned().fold(f32::MIN, f32::max) - c.iter().cloned().fold(f32::MAX, f32::min);
+        let mut img = raw.clone();
+        apply(&mut img, &s);
+        assert!(spread(img.data[at]) < 0.02, "{:?}", img.data[at]);
+        // without the pick the balance is applied
+        s.negative.gray = None;
+        let mut balanced = raw.clone();
+        apply(&mut balanced, &s);
+        assert!(spread(balanced.data[at]) > 0.02, "{:?}", balanced.data[at]);
+    }
+
     #[test]
     fn simple_ignores_the_advanced_choices_and_advanced_applies_them() {
         let raw = scan(60, 40);
@@ -363,6 +414,19 @@ mod tests {
         let mut applied = raw.clone();
         apply(&mut applied, &s);
         assert_eq!(positive(&raw, &s).data, applied.data);
+    }
+
+    #[test]
+    fn the_picker_clamps_each_pixel_before_it_averages() {
+        // two sRGB samples either side of the clamp: 1.8 renders as 1.0 and -0.4 as 0.0
+        let back = to_rec2020().to_f32();
+        let px = |g: f32| back.map(|r| (r[0] + r[1] + r[2]) * g);
+        let mean = scan_colour_mean(&[px(1.8), px(-0.4)]);
+        for c in mean {
+            assert!((c - 0.5).abs() < 1e-5, "{mean:?}");
+        }
+        // clamping the average would give (1.8 - 0.4) / 2 = 0.7
+        assert!(scan_colour([0, 1, 2].map(|i| (px(1.8)[i] + px(-0.4)[i]) / 2.0)).iter().all(|c| (c - 0.7).abs() < 1e-5));
     }
 
     #[test]

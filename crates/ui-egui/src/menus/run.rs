@@ -977,8 +977,10 @@ fn ui_commands_7(app: &mut LightcraftApp, ctx: &egui::Context, id: &str, p: &Val
         }
         "photo.convertNegative" => {
             let Some(id) = app.session.active() else { return Some(Err("no photo selected".into())) };
-            // switched on, and measured when it has no measurement yet (a pasted or old conversion)
-            let ready = app.session.develop_of(id).is_some_and(|d| d.negative.enabled && d.negative.measured.is_some());
+            // switched on and shown (its section's eye is on), and measured when it has no
+            // measurement yet (a pasted or old conversion)
+            let ready =
+                app.session.develop_of(id).is_some_and(|d| d.negative.enabled && d.section_enabled("negative") && d.negative.measured.is_some());
             if !ready && let Err(e) = app.run("develop.negative", json!({})) {
                 return Some(Err(e));
             }

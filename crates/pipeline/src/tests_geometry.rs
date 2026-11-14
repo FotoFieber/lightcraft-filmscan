@@ -665,3 +665,28 @@ fn the_analysis_cache_tells_lenses_and_optics_apart() {
     assert!(!off.section_enabled("optics"));
     assert_ne!(key(&src, &plain, &s), key(&src, &plain, &off), "the optics section off");
 }
+
+/// Convert Negative converts the photo and leaves the blank canvas of a warp as it is: the canvas
+/// of a converted render is the canvas of the same render without the conversion.
+#[test]
+fn a_converted_negative_keeps_the_blank_canvas() {
+    let src = Rgb32f::from_fn(300, 200, |x, y| [0.45 + 0.0005 * x as f32, 0.3 + 0.0005 * y as f32, 0.15]);
+    let mut s = DevelopSettings::default();
+    s.geometry.vertical = -60.0;
+    s.geometry.rotate = 4.0;
+    let req = RenderRequest::fit(300, 300);
+    let plain = render(&src, &SourceInfo::default(), &s, &req).image;
+    s.negative.enabled = true;
+    let converted = render(&src, &SourceInfo::default(), &s, &req).image;
+    let blank =
+        crate::render(&Rgb32f::filled(4, 4, crate::geometry::BLANK), &SourceInfo::default(), &DevelopSettings::default(), &RenderRequest::fit(4, 4))
+            .image
+            .get(1, 1);
+    let canvas: Vec<usize> = (0..plain.len()).filter(|&i| (0..3).all(|c| (plain.data[i][c] as i32 - blank[c] as i32).abs() <= 1)).collect();
+    assert!(canvas.len() as f64 / plain.len() as f64 > 0.03, "the keystone leaves blank corners");
+    for &i in &canvas {
+        assert!((0..3).all(|c| (converted.data[i][c] as i32 - blank[c] as i32).abs() <= 1), "canvas pixel {i}: {:?}", converted.data[i]);
+    }
+    let changed = (0..plain.len()).filter(|i| !canvas.contains(i)).filter(|&i| plain.data[i] != converted.data[i]).count();
+    assert!(changed > plain.len() / 2, "the photo itself is converted");
+}

@@ -917,7 +917,7 @@ pub(crate) fn prepare(
 pub(crate) fn frame_airlight(src: &Rgb32f, info: &SourceInfo, s: &DevelopSettings, frame: &Frame, proxy_w: usize, proxy_h: usize) -> f32 {
     let mut img = Rgb32f::clone(&frame_proxy(src, frame, proxy_w, proxy_h));
     // (the positive of a negative, as the render it stands in for sees it)
-    crate::negative::apply(&mut img, s);
+    crate::negative::apply_in(&mut img, s, Some(frame));
     white_balance(&mut img, info, s);
     let sigma = (0.02 * frame.px_per_long(proxy_w)).max(1.0) as f32;
     airlight(&gaussian(&img.map(dark_of), sigma))
@@ -1287,7 +1287,7 @@ mod tests {
         s.negative.enabled = true;
         let converted = frame_airlight(&scan, &info, &s, &frame, 48, 32);
         let mut positive = frame.sample(&scan, 48, 32);
-        crate::negative::apply(&mut positive, &s);
+        crate::negative::apply_in(&mut positive, &s, Some(&frame));
         white_balance(&mut positive, &info, &s);
         let want = airlight(&gaussian(&positive.map(dark_of), (0.02 * frame.px_per_long(48)).max(1.0) as f32));
         assert_eq!(converted.to_bits(), want.to_bits());

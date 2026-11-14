@@ -602,7 +602,7 @@ pub fn colour_noise(src: &Rgb32f, info: &SourceInfo, p: &Plan<'_>) -> Option<nrc
                 full: p.full.clone(),
                 ..*p
             };
-            negative::apply(&mut img, s);
+            negative::apply_in(&mut img, s, Some(&tile.frame));
             local_tone::apply(&mut img, info, &tile);
             local::white_balance(&mut img, info, s);
             local::apply_nr(&mut img, lum, None);
@@ -635,7 +635,7 @@ pub fn lin_needs_cpu_stage(info: &SourceInfo, s: &DevelopSettings) -> bool {
 pub fn lin_cpu(img: &mut Rgb32f, info: &SourceInfo, p: &Plan<'_>) {
     let s = &*p.settings;
     // (the negative becomes a positive before anything edits it)
-    negative::apply(img, s);
+    negative::apply_in(img, s, Some(&p.frame));
     // (before the white balance: the gain's input is the as-shot development, as in the file)
     local_tone::apply(img, info, p);
     local::white_balance(img, info, s);

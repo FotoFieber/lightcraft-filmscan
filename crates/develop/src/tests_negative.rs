@@ -52,6 +52,15 @@ fn untrusted_values_are_kept_in_range() {
 }
 
 #[test]
+fn a_measurement_without_a_balance_has_none() {
+    let s =
+        DevelopSettings::from_json(&json!({"negative": {"measured": {"base": [0.6, 0.4, 0.2], "black": [0.5, 0.5, 0.5], "white": [0.1, 0.1, 0.1]}}}))
+            .unwrap();
+    assert_eq!(s.negative.measured.unwrap().balance, [1.0; 3]);
+    assert_eq!(s.negative.sanitized().measured.unwrap().balance, [1.0; 3]);
+}
+
+#[test]
 fn not_a_number_becomes_the_default() {
     let n = Negative { range: f64::NAN, contrast: f64::INFINITY, gray: Some([f64::NAN, 0.5, 2.0]), ..Negative::default() }.sanitized();
     assert_eq!((n.range, n.contrast, n.gray), (3.0, 0.0, Some([0.0, 0.5, 1.0])));

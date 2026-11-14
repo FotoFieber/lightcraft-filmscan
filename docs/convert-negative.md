@@ -76,8 +76,8 @@ its selector, the B&W mix) see the positive. GPU renders run that stage on the C
 converted.
 
 The measurement and the selectors read the preview-size copy of the scan. The measurement uses the
-crop's box; a straighten angle is not taken into account, so measure before straightening, or crop
-inside the frame.
+crop as the render shows it: a straighten angle is applied, so the measured area is the turned crop.
+Lens and perspective corrections are not.
 
 The film presets are starting points built from the stocks' published characteristics; the film names
 are their makers' trademarks and only say which stock a recipe takes after.

@@ -216,7 +216,8 @@ fn compose_named(current: &DevelopSettings, original: &DevelopSettings, settings
         return current.merged(settings).unwrap_or_else(|_| current.clone());
     }
     let cur = current.to_json();
-    let mut base = original.to_json();
+    // (the merge JSON states what the stored JSON leaves out at its defaults, Convert Negative among it)
+    let mut base = original.to_json_for_merge();
     if let (Some(b), Some(c)) = (base.as_object_mut(), cur.as_object()) {
         for k in REPAIR_KEYS {
             if let Some(v) = c.get(k) {
@@ -507,6 +508,24 @@ mod tests {
         };
         let out = p.apply_on(&current, &original, 0.5);
         assert!((out.light.exposure - 0.225).abs() < 1e-9, "{}", out.light.exposure);
+    }
+
+    /// A preset that turns Convert Negative on interpolates its sliders from their defaults, though
+    /// the stored JSON of default settings leaves the negative out.
+    #[test]
+    fn apply_on_scales_a_negative_from_its_defaults() {
+        let current = DevelopSettings::default();
+        let p = Preset {
+            id: "p".into(),
+            name: "P".into(),
+            group: "G".into(),
+            settings: json!({"negative": {"exposure": 3.0}}),
+            favorite: false,
+            builtin: false,
+        };
+        let out = p.apply_on(&current, &DevelopSettings::default(), 0.25);
+        assert!((out.negative.exposure - 0.75).abs() < 1e-9, "{}", out.negative.exposure);
+        assert!(p.apply_on(&current, &DevelopSettings::default(), 0.0).negative.is_default());
     }
 
     /// Pixel repairs are the photo's own: a preset's are patched in, and one without them never

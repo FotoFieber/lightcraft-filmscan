@@ -153,6 +153,46 @@ fn done_return_and_the_menu_entry_again() {
     assert_eq!(h.app.ui.right, RightPanel::Edit);
 }
 
+/// A conversion that is on and measured but hidden by its section's eye is shown again by the menu
+/// entry, which would otherwise report success and leave the scan negative.
+#[test]
+fn the_menu_entry_shows_a_hidden_conversion() {
+    let mut h = demo();
+    h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
+    h.settle(SETTLE);
+    h.request("engine.execute", json!({"command": "develop.sectionEnabled", "params": {"section": "negative", "enabled": false}}), T);
+    let id = h.app.session.active().unwrap();
+    assert!(!h.app.session.develop_of(id).unwrap().section_enabled("negative"));
+    assert!(negative(&h).enabled && negative(&h).measured.is_some());
+    let r = h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    assert!(h.app.session.develop_of(id).unwrap().section_enabled("negative"), "the section is shown again");
+}
+
+/// On a photo with a lens correction a click on the Film Base selector picks the scan where the
+/// corrected view shows it, not where the same normalized point of the unwarped scan is.
+#[test]
+fn the_selector_picks_through_a_lens_warp() {
+    let mut h = demo();
+    h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
+    h.settle(SETTLE);
+    h.request("engine.execute", json!({"command": "develop.set", "params": {"control": "optics.distortion", "value": 80}}), T);
+    h.settle(SETTLE);
+    click(&mut h, "button:negativeMode-advanced");
+    click(&mut h, "icon:negBase");
+    let img = h.app.image_rect.expect("the photo is on screen");
+    let (fx, fy) = (0.04, 0.5);
+    let at = img.left_top() + egui::vec2(img.width() * fx, img.height() * fy);
+    h.request("ui.click", json!({"x": at.x, "y": at.y}), T);
+    h.settle(SETTLE);
+    let picked = negative(&h).base.expect("the click picked the film base");
+    // the same normalized point of the unwarped scan, which the unfixed mapping sent
+    h.request("engine.execute", json!({"command": "develop.negativePick", "params": {"x": fx, "y": fy}}), T);
+    let plain = negative(&h).base.expect("a pick");
+    assert_ne!(picked, plain, "a point near the edge moves through the warp");
+}
+
 #[test]
 fn without_a_photo_the_menu_entry_is_an_error() {
     let app = LightcraftApp::new(lightcraft_engine::Session::new(), Services { png: None, ..Default::default() });

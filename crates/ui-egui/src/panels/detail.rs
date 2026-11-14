@@ -1262,7 +1262,8 @@ fn general_interaction(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::
         if resp.clicked()
             && let Some(q) = resp.interact_pointer_pos()
         {
-            let n = map.norm(q);
+            // (a point of the scan itself, before a lens or perspective warp moved it)
+            let n = map.for_mask(true).norm(q);
             if let Err(e) = app.run("develop.negativePick", json!({"x": n.x, "y": n.y, "target": target})) {
                 app.toast(ui.ctx(), e);
             }

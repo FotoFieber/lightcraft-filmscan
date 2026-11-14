@@ -305,6 +305,7 @@ impl Default for Negative {
 }
 
 impl Default for NegativeMeasurement {
+    /// No measurement: the levels at 0 and the balance neutral (1 = none).
     fn default() -> Self {
         Self { base: [0.0; 3], black: [0.0; 3], white: [0.0; 3], balance: [1.0; 3] }
     }
