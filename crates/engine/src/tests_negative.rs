@@ -137,6 +137,78 @@ fn zap_converts_a_black_and_white_negative_on_its_coloured_base() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A roll's frames agree on their crop: an edge far off the others' moves to the roll's (a dark
+/// scene taken for rebate); the frames that agree, and a selection that agrees on nothing, stay.
+#[test]
+fn a_roll_agrees_on_its_frames_crop() {
+    use crate::negative_zap::{Zapped, agree};
+    let frame = |r: [f64; 4]| {
+        let mut d = lightcraft_develop::DevelopSettings::default();
+        d.crop.geometry = lightcraft_geom::CropGeometry { rect: lightcraft_geom::Rect::new(r[0], r[1], r[2], r[3]), angle: 0.3 };
+        d.negative.zap_crop = Some(d.crop.geometry);
+        Zapped { settings: d, report: serde_json::Value::Null, samples: None }
+    };
+    let roll =
+        [[0.01, 0.01, 0.99, 0.96], [0.012, 0.01, 0.99, 0.965], [0.01, 0.2, 0.99, 0.96], [0.015, 0.012, 0.985, 0.96], [0.01, 0.01, 0.99, 0.955]];
+    let mut zapped: Vec<_> = roll.iter().enumerate().map(|(i, r)| (crate::PhotoId(i as u64 + 1), frame(*r))).collect();
+    let before = zapped.clone();
+    assert_eq!(agree(&mut zapped), vec![crate::PhotoId(3)]);
+    let g = zapped[2].1.settings.crop.geometry;
+    assert!((g.rect.y0 - 0.01).abs() < 1e-9 && g.angle == 0.3, "the roll's top, its own angle: {g:?}");
+    assert_eq!(zapped[2].1.settings.negative.zap_crop, Some(g), "still Zap!'s crop");
+    for i in [0, 1, 3, 4] {
+        assert_eq!(zapped[i].1.settings, before[i].1.settings, "frame {i} agrees already");
+    }
+    // a moved frame that can't be measured in its new crop keeps its own crop: it never fails the rest
+    let mut zapped: Vec<_> = roll.iter().enumerate().map(|(i, r)| (crate::PhotoId(i as u64 + 1), frame(*r))).collect();
+    let moved = crate::negative_zap::agree_measured(&mut zapped, |_, _, _| Err("no pixels to measure".into()));
+    assert!(moved.is_empty());
+    assert_eq!(zapped[2].1.settings, before[2].1.settings, "its own crop again");
+    // a roll with nothing to pool (no frame's samples count) keeps each frame's own measurement,
+    // rather than failing the selection
+    let mut zapped: Vec<_> = roll.iter().enumerate().map(|(i, r)| (crate::PhotoId(i as u64 + 1), frame(*r))).collect();
+    for (_, z) in &mut zapped {
+        z.samples =
+            Some(Box::new(crate::negative_zap::RollSamples { samples: lightcraft_pipeline::negative::film::ValueHistogram::new(), base: None }));
+        z.settings.negative.enabled = true;
+    }
+    assert!(crate::negative_zap::pool(&mut zapped).unwrap().is_none());
+    // a selection that agrees on nothing (other films, holders) is left as it is
+    let mixed = [[0.1, 0.05, 0.9, 0.95], [0.25, 0.2, 0.7, 0.8], [0.0, 0.3, 0.6, 0.99], [0.4, 0.1, 0.95, 0.7], [0.05, 0.45, 0.8, 0.85]];
+    let mut zapped: Vec<_> = mixed.iter().enumerate().map(|(i, r)| (crate::PhotoId(i as u64 + 1), frame(*r))).collect();
+    assert!(agree(&mut zapped).is_empty());
+    // fewer frames than a roll needs
+    let mut zapped: Vec<_> = roll.iter().take(3).enumerate().map(|(i, r)| (crate::PhotoId(i as u64 + 1), frame(*r))).collect();
+    assert!(agree(&mut zapped).is_empty());
+}
+
+/// The roll's crop never takes a frame's crop onto blank film (a roll's last frame, half exposed,
+/// beside the fogged leader): measured again there, the move is refused; onto picture, it holds.
+#[test]
+fn a_roll_never_widens_a_frame_onto_blank_film() {
+    use crate::negative_zap::{Zapped, remeasure};
+    // the picture on the left 70 %, then even film
+    let scan = lightcraft_raster::Rgb32f::from_fn(600, 400, |x, y| {
+        if x >= 420 {
+            return [0.08, 0.07, 0.06];
+        }
+        let t = 0.3 + 0.25 * ((x as f64 / 13.0).sin() * (y as f64 / 9.0).cos()).abs();
+        [0.5 * t as f32, 0.4 * t as f32, 0.3 * t as f32]
+    });
+    let zapped = |r: [f64; 4]| {
+        let mut d = lightcraft_develop::DevelopSettings::default();
+        d.crop.geometry = lightcraft_geom::CropGeometry { rect: lightcraft_geom::Rect::new(r[0], r[1], r[2], r[3]), angle: 0.0 };
+        d.negative.zap_crop = Some(d.crop.geometry);
+        Zapped { settings: d, report: serde_json::Value::Null, samples: None }
+    };
+    // the frame's own crop ends with its picture; the roll's reaches on over the leader
+    let mut onto_blank = zapped([0.05, 0.05, 0.95, 0.95]);
+    assert!(remeasure(&scan, &mut onto_blank, lightcraft_geom::Rect::new(0.05, 0.05, 0.7, 0.95)).is_err(), "the leader is no picture");
+    let mut onto_picture = zapped([0.05, 0.05, 0.68, 0.95]);
+    remeasure(&scan, &mut onto_picture, lightcraft_geom::Rect::new(0.05, 0.05, 0.5, 0.95)).unwrap();
+    assert!(onto_picture.settings.negative.measured.is_some());
+}
+
 #[test]
 fn zap_removes_the_sprocket_holes_or_crops_to_the_whole_film() {
     let dir = std::env::temp_dir().join(format!("lc-zap-holes-{}", std::process::id()));
@@ -548,4 +620,46 @@ fn zap_roll_on_real_scans() {
     }
     let (a, b) = (spread(&results[0]), spread(&results[1]));
     println!("SPREAD single L {:.2} a {:.2} b {:.2} | roll L {:.2} a {:.2} b {:.2}", a[0], a[1], a[2], b[0], b[1], b[2]);
+}
+
+/// Opt-in: Zap! on every scan of a truth file (`LC_ZAP_TRUTH`: `{path: {film, ..}}`, the user's
+/// crops), each folder zapped as one selection, the crops written to `LC_ZAP_RESULT` as
+/// `{path: {rect, angle}}` for a scorer to compare. `LC_ZAP_ONLY` keeps the paths containing it;
+/// `LC_ZAP_ROLL` zaps each folder as one roll.
+#[test]
+#[ignore = "needs the user's scans"]
+fn zap_eval_on_truth() {
+    let (Ok(truth), Ok(result)) = (std::env::var("LC_ZAP_TRUTH"), std::env::var("LC_ZAP_RESULT")) else {
+        lightcraft_testkit::skip!(Input, "set LC_ZAP_TRUTH=<truth.json> and LC_ZAP_RESULT=<out.json>");
+        return;
+    };
+    let only = std::env::var("LC_ZAP_ONLY").unwrap_or_default();
+    let truth: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(truth).unwrap()).unwrap();
+    // one selection per folder and film, as a user zaps a roll
+    let mut groups: std::collections::BTreeMap<(String, String), Vec<String>> = Default::default();
+    for (path, t) in &truth {
+        if !path.contains(&only) {
+            continue;
+        }
+        let dir = std::path::Path::new(path).parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
+        let film = t["film"].as_str().unwrap_or("negative").to_string();
+        groups.entry((dir, film)).or_default().push(path.clone());
+    }
+    let mut out = serde_json::Map::new();
+    for ((dir, film), paths) in groups {
+        let mut s = Session::new().with_fs();
+        s.execute("library.import", &json!({"paths": paths})).unwrap();
+        let ids: Vec<crate::PhotoId> = s.visible_cloned();
+        let roll = std::env::var_os("LC_ZAP_ROLL").is_some();
+        let r = s.execute("develop.negativeZap", &json!({"ids": ids.iter().map(|i| i.0).collect::<Vec<_>>(), "film": film, "roll": roll}));
+        eprintln!("{dir} ({film}, {}): {}", ids.len(), r.as_ref().map(|v| v["failed"].to_string()).unwrap_or_else(|e| e.to_string()));
+        for id in ids {
+            let (Some(p), Some(d)) = (s.catalog.photo(id), s.develop_of(id)) else { continue };
+            let lightcraft_catalog::Source::File { path } = &p.source else { continue };
+            let g = d.crop.geometry;
+            let zapped = d.negative.zap_crop.is_some();
+            out.insert(path.clone(), json!({"rect": [g.rect.x0, g.rect.y0, g.rect.x1, g.rect.y1], "angle": g.angle, "zapped": zapped, "orientation": format!("{:?}", d.orientation)}));
+        }
+    }
+    std::fs::write(result, serde_json::to_string(&out).unwrap()).unwrap();
 }

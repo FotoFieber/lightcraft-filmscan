@@ -5,7 +5,7 @@
 
 use lightcraft_catalog::{Photo, PhotoId};
 use lightcraft_develop::{DevelopSettings, NegativeMeasurement};
-use lightcraft_geom::{CropGeometry, MIN_CROP_FRACTION, Rect};
+use lightcraft_geom::{CropGeometry, MIN_CROP_FRACTION, Orientation, Rect};
 use lightcraft_pipeline::negative::film::ValueHistogram;
 use lightcraft_pipeline::negative_frame::{self, Frame, Margin};
 use lightcraft_raster::Rgb32f;
@@ -289,6 +289,134 @@ fn framed(scan: &Rgb32f, d: &DevelopSettings, g: CropGeometry) -> Rgb32f {
     if x1 > x0 && y1 > y0 { o.crop(x0, y0, x1 - x0, y1 - y0) } else { o }
 }
 
+/// Fewest frames of one orientation that [`agree`] compares.
+pub const AGREE_MIN: usize = 4;
+/// How far a frame's crop edge may lie from the roll's (normalized) before [`agree`] moves it.
+pub const AGREE_TOLERANCE: f64 = 0.05;
+/// The share of the frames that must lie within [`AGREE_TOLERANCE`] of an edge's median for the
+/// selection to agree on it (one holder, one scanner setup); a mixed selection (other films,
+/// formats or holders) agrees on none and is left as it is.
+pub const AGREE_SHARE: f64 = 0.75;
+
+/// Frames of one roll scanned in one holder sit alike on their scans (for a selection zapped as one
+/// roll, [`Options::roll`]): where most of its frames agree on a crop edge, a frame whose edge lies far from the others' (a dark scene taken
+/// for rebate, a beam taken for the frame's edge) gets the roll's edge. Per orientation, among the
+/// frames whose crop Zap! set (not a crop of the user's own or a slide's), at least [`AGREE_MIN`]
+/// of them. A frame keeps its own angle. The ids whose crop moved, to be measured again.
+pub fn agree(zapped: &mut [(PhotoId, Zapped)]) -> Vec<PhotoId> {
+    let mut groups: Vec<(Orientation, Vec<usize>)> = Vec::new();
+    for (i, (_, z)) in zapped.iter().enumerate() {
+        let d = &z.settings;
+        if d.negative.zap_crop != Some(d.crop.geometry) {
+            continue;
+        }
+        match groups.iter_mut().find(|(o, _)| *o == d.orientation) {
+            Some((_, v)) => v.push(i),
+            None => groups.push((d.orientation, vec![i])),
+        }
+    }
+    let mut moved = Vec::new();
+    for (_, members) in groups.into_iter().filter(|(_, m)| m.len() >= AGREE_MIN) {
+        for k in 0..4 {
+            let mut v: Vec<f64> = members
+                .iter()
+                .filter_map(|i| zapped.get(*i))
+                .map(|(_, z)| edges(z.settings.crop.geometry.rect)[k])
+                .filter(|e| e.is_finite())
+                .collect();
+            v.sort_by(f64::total_cmp);
+            let Some(median) = v.get(v.len() / 2).copied() else { continue };
+            let close = v.iter().filter(|e| (*e - median).abs() <= AGREE_TOLERANCE).count();
+            if (close as f64) < AGREE_SHARE * members.len() as f64 {
+                continue;
+            }
+            for i in &members {
+                let Some((id, z)) = zapped.get_mut(*i) else { continue };
+                let g = &mut z.settings.crop.geometry;
+                let mut e = edges(g.rect);
+                if (e[k] - median).abs() > AGREE_TOLERANCE {
+                    e[k] = median;
+                    g.rect = Rect::new(e[0], e[1], e[2], e[3]);
+                    z.settings.negative.zap_crop = Some(*g);
+                    if !moved.contains(id) {
+                        moved.push(*id);
+                    }
+                }
+            }
+        }
+    }
+    moved
+}
+
+fn edges(r: Rect) -> [f64; 4] {
+    [r.x0, r.y0, r.x1, r.y1]
+}
+
+/// [`agree`], each moved frame measured again inside its new crop by `measure` (as [`remeasure`],
+/// given the frame's own crop). A frame that can't be measured there keeps its own crop and
+/// measurement: one frame never fails the selection. The ids whose crop moved.
+pub fn agree_measured(zapped: &mut [(PhotoId, Zapped)], mut measure: impl FnMut(PhotoId, &mut Zapped, Rect) -> Result<(), String>) -> Vec<PhotoId> {
+    let before: Vec<Zapped> = zapped.iter().map(|(_, z)| z.clone()).collect();
+    let mut kept = Vec::new();
+    for id in agree(zapped) {
+        let Some(i) = zapped.iter().position(|(z, _)| *z == id) else { continue };
+        let (Some((_, z)), Some(old)) = (zapped.get_mut(i), before.get(i)) else { continue };
+        match measure(id, z, old.settings.crop.geometry.rect) {
+            Ok(()) => kept.push(id),
+            Err(_) => *z = old.clone(),
+        }
+    }
+    kept
+}
+
+/// A strip of film this even (natural log of luminance, 10 % to 90 %) has no picture on it: the
+/// base, or the fogged leader past a roll's last frame (about 0.4 on a camera scan, its noise in
+/// the dark; the darkest scene beside it, thin trees on a B&W negative, 0.8).
+pub const BLANK_SPREAD: f32 = 0.5;
+/// Thinnest strip (normalized) [`widens_onto_blank`] reads.
+const BLANK_STRIP_MIN: f64 = 0.005;
+
+/// Whether the crop of `d` reaches past `own` (the frame's own crop) onto blank film on some side
+/// ([`BLANK_SPREAD`]): a roll's last frame, half exposed, ends where its picture ends, whatever the
+/// other frames' edges.
+fn widens_onto_blank(scan: &Rgb32f, d: &DevelopSettings, own: Rect) -> bool {
+    let g = d.crop.geometry;
+    let n = g.rect;
+    let strips = [
+        (n.x0 < own.x0).then(|| Rect::new(n.x0, n.y0, own.x0, n.y1)),
+        (n.y0 < own.y0).then(|| Rect::new(n.x0, n.y0, n.x1, own.y0)),
+        (n.x1 > own.x1).then(|| Rect::new(own.x1, n.y0, n.x1, n.y1)),
+        (n.y1 > own.y1).then(|| Rect::new(n.x0, own.y1, n.x1, n.y1)),
+    ];
+    strips.into_iter().flatten().filter(|r| r.width() >= BLANK_STRIP_MIN && r.height() >= BLANK_STRIP_MIN).any(|r| {
+        let px = framed(scan, d, CropGeometry { rect: r, angle: g.angle });
+        let mut v: Vec<f32> =
+            px.data.iter().map(|p| (0.2627 * p[0] + 0.678 * p[1] + 0.0593 * p[2]).max(0.0) + 1e-4).map(f32::ln).filter(|v| v.is_finite()).collect();
+        if v.len() < 50 {
+            return false;
+        }
+        v.sort_by(f32::total_cmp);
+        let q = |f: f64| v.get(((v.len() - 1) as f64 * f) as usize).copied().unwrap_or(0.0);
+        q(0.9) - q(0.1) < BLANK_SPREAD
+    })
+}
+
+/// A frame whose crop [`agree`] moved, measured again inside it (`scan`: its source, as [`zap`]
+/// read it), its roll samples too. An error when the move reaches past its own crop (`own`) onto
+/// blank film ([`widens_onto_blank`]): the frame then keeps its own crop.
+pub fn remeasure(scan: &Rgb32f, z: &mut Zapped, own: Rect) -> Result<(), String> {
+    if widens_onto_blank(scan, &z.settings, own) {
+        return Err("the roll's crop reaches onto blank film".into());
+    }
+    let g = z.settings.crop.geometry;
+    let measured = measure_in(scan, &z.settings, g, 0.0)?;
+    if let Some(r) = z.samples.as_deref_mut() {
+        r.samples = sample_in(scan, &z.settings, g, 0.0, r.base)?;
+    }
+    z.settings.negative.measured = Some(measured);
+    Ok(())
+}
+
 /// Film bases whose colour differs by more than this (in any channel, as a ratio, after their
 /// brightness is set aside) are another film or another light: such a frame is measured on its own.
 pub const ROLL_BASE_TOLERANCE: f64 = 1.15;
@@ -358,7 +486,9 @@ pub fn pool(zapped: &mut [(PhotoId, Zapped)]) -> Result<Option<Roll>, String> {
         roll.frames.push(*id);
         roll.bases += usize::from(r.base.is_some());
     }
-    if roll.frames.len() < 2 {
+    // (nothing to pool: in a mixed selection the frames counted may be only those without a base
+    // to read relative to; each then keeps the measurement Zap! took on it)
+    if roll.frames.len() < 2 || samples.count() == 0 {
         return Ok(None);
     }
     let pooled = lightcraft_pipeline::negative::measure_samples(&samples)?;
@@ -429,6 +559,12 @@ impl Input {
     pub fn run(&self, o: Options) -> Result<Zapped, String> {
         let source = self.source.load_source()?;
         zap(&source.image, &self.settings, self.dims, o)
+    }
+
+    /// Reads the photo's scan again and measures `z` inside its crop ([`remeasure`]).
+    pub fn remeasure(&self, z: &mut Zapped, own: Rect) -> Result<(), String> {
+        let source = self.source.load_source()?;
+        remeasure(&source.image, z, own)
     }
 }
 

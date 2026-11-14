@@ -55,6 +55,7 @@ impl Prepared {
         let cancelled = || progress.is_some_and(|p| p.is_cancelled());
         let mut zapped = Vec::with_capacity(self.inputs.len());
         let mut read = Vec::with_capacity(self.inputs.len());
+        let mut sources = Vec::with_capacity(self.inputs.len());
         let mut failed = Vec::new();
         for (i, input) in self.inputs.into_iter().enumerate() {
             if cancelled() {
@@ -64,7 +65,8 @@ impl Prepared {
             match input.run(self.options) {
                 Ok(z) => {
                     zapped.push((input.id, z));
-                    read.push(input.settings);
+                    read.push(input.settings.clone());
+                    sources.push(input);
                 }
                 Err(e) => failed.push((input.id, e)),
             }
@@ -78,6 +80,10 @@ impl Prepared {
         if zapped.is_empty() {
             let why = failed.first().map(|(id, e)| format!(" (photo {}: {e})", id.0)).unwrap_or_default();
             return Err(crate::i18n::tr_format!("Zap!: no film frame found on any of the photos{why}", why = why));
+        }
+        // one roll's frames agree on their crop: a frame far off the others' is moved and measured again
+        if self.options.roll {
+            negative_zap::agree_measured(&mut zapped, |id, z, own| sources.iter().find(|s| s.id == id).ok_or_else(String::new)?.remeasure(z, own));
         }
         let roll = if self.options.roll { negative_zap::pool(&mut zapped)? } else { None };
         let settings = zapped.into_iter().zip(read).map(|((id, z), before)| (id, before, z.settings)).collect();
