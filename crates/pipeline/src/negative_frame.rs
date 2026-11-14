@@ -11,7 +11,10 @@
 //!    disagree with the others or have too few points are left out.
 //! 3. **Film base.** In the straightened scan, the bands just inside the film's edges are rebate
 //!    or picture; their median colour, light through the sprocket holes left out (far bluer or
-//!    brighter than an orange base), is the first guess of the base.
+//!    brighter than an orange base), is the first guess of the base. Where the film fills the scan
+//!    (a holder tighter than the frame, no film edge in sight) those bands are picture: the base
+//!    then comes from the film between the sprocket holes, else from an even, narrow strip at one
+//!    of the film's edges (the rebate, or a gap between frames), the brightest film there is.
 //! 4. **The picture.** For each side, a profile from the film's edge inward: the median distance
 //!    (log colour) to the base along the side. Rebate is flat and near the base; the picture starts
 //!    where it leaves the base for good. Where the picture is as thin as the base (a scene shadow
@@ -242,8 +245,32 @@ impl Frame {
 /// along the film over its height across it, see [`FORMATS`]) places a side the scan doesn't show
 /// and weighs the choice of sides; without it, sides are placed by the rebate across from them.
 pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
-    let Strip { angle, turned, threshold, film, guess, light, holes } = strip(src, FILM_FRACTION)?;
+    let Strip { angle, turned, threshold, film, guess, light, mut holes } = strip(src, FILM_FRACTION)?;
     let (w, h) = (turned.width, turned.height);
+    // no holes found with a base guess that is picture: the brighter rebate passes for light, and
+    // the holes run into it; look again against the brightest of the bands
+    let mut light = light;
+    // (only where the film fills the scan: with the holder's edge in sight, the bands at the film's
+    // edges are rebate and their median the surer base)
+    let fills = film_fills(film, w, h);
+    if fills
+        && holes.iter().all(Option::is_none)
+        && let Some(bright) = bright_base(&turned, film, threshold, &guess)
+    {
+        let l = Light::of(&bright);
+        let again = hole_rows(&turned, film, threshold, &l);
+        if again.iter().any(Option::is_some) {
+            (holes, light) = (again, l);
+        }
+    }
+    // the rebate between the sprocket holes is surer film base than the bands at the film's edges,
+    // which are picture where the film fills the scan (a holder that shows no film edge)
+    let found =
+        if fills { holes_base(&turned, film, &holes, threshold, &light).or_else(|| strip_base(&turned, film, threshold, &guess)) } else { None };
+    let (guess, light) = match found {
+        Some(b) => (b, Light::of(&b)),
+        None => (guess, light),
+    };
     let dist = distance(&turned, &guess, threshold, &light);
     let lum = turned.map(|p| (luma(p).max(0.0) + 1e-4).ln());
     // the film runs along the sprocket holes, else along the film's longer side
@@ -751,6 +778,135 @@ fn band_base(img: &Rgb32f, film: Px, threshold: f32) -> Option<[f32; 3]> {
     channel_median(&kept)
 }
 
+/// The brightest share of the bands just inside the film's edges that [`bright_base`] reads.
+const BRIGHT_SHARE: f64 = 0.1;
+/// How much brighter than the bands' median their brightest share must be to stand for the base.
+const BRIGHT_RATIO: f32 = 1.3;
+
+/// A film base to look for the sprocket holes against where the bands at the film's edges are
+/// mostly picture (a scan the film fills, its rebate a thin strip): the base is the thinnest film
+/// there is, so the brightest of the bands (light left out) is about the base, any picture denser.
+/// `None` when the bands' median `guess` is about as bright: then they are rebate already. Only for
+/// the holes: as the base itself it takes a bright scene for rebate.
+fn bright_base(img: &Rgb32f, film: Px, threshold: f32, guess: &[f32; 3]) -> Option<[f32; 3]> {
+    let band = ((film.width().min(film.height()) as f64 * BAND) as usize).max(2);
+    let open = open_light(img)?;
+    let mut v: Vec<[f32; 3]> = Vec::new();
+    for y in film.y0..film.y1 {
+        for x in film.x0..film.x1 {
+            let edge = y < film.y0 + band || y + band >= film.y1 || x < film.x0 + band || x + band >= film.x1;
+            if let Some(p) = px(img, x, y).filter(|p| edge && luma(*p) > threshold && luma(*p) < open) {
+                v.push(p);
+            }
+        }
+    }
+    let cut = quantile(v.iter().map(|p| luma(*p)).collect(), 1.0 - BRIGHT_SHARE)?;
+    let bright: Vec<[f32; 3]> = v.into_iter().filter(|p| luma(*p) >= cut).collect();
+    let b = channel_median(&bright)?;
+    (luma(b) > luma(*guess) * BRIGHT_RATIO).then_some(b)
+}
+
+/// How much of the scan's width and height the film covers for it to fill the scan.
+const FILLS: f64 = 0.98;
+
+/// The film fills the scan: no holder's edge in sight (a holder tighter than the frame).
+fn film_fills(film: Px, w: usize, h: usize) -> bool {
+    film.width() as f64 >= w as f64 * FILLS && film.height() as f64 >= h as f64 * FILLS
+}
+
+/// Light through the film's holes is at least this share of the scan's brightest.
+const OPEN_LIGHT: f32 = 0.8;
+
+/// What counts as light through the holes where the base guess is no base ([`bright_base`],
+/// [`strip_base`]): light relative to such a guess would take the brighter rebate for light too.
+/// The holes let the light through whole, the thinnest film still dims it.
+fn open_light(img: &Rgb32f) -> Option<f32> {
+    let top = quantile(img.data.iter().map(|p| luma(*p)).collect(), 0.999)?;
+    (top.is_finite() && top > 0.0).then_some(top * OPEN_LIGHT)
+}
+
+/// A rebate strip at the film's edge ([`strip_base`]): its lines' brightness (natural log of the
+/// median luminance) stays within this of its first line's, for at least `STRIP_MIN` lines and at
+/// most this share of the film's extent across the side, and the line after it leaves by more.
+const STRIP_FLAT: f32 = 0.08;
+const STRIP_MIN: usize = 3;
+const STRIP_MAX: f64 = 0.1;
+
+/// The film base where the bands at the film's edges are mostly picture and no sprocket holes show
+/// (a scan the film fills, its rebate a thin strip): on each side, a strip at the film's edge that is
+/// even all along (unexposed film) and narrow, after which the picture starts. The base is the
+/// thinnest film there is: the brightest such strip, when it is clearly brighter than the bands'
+/// median `guess` (else they are rebate already).
+fn strip_base(img: &Rgb32f, film: Px, threshold: f32, guess: &[f32; 3]) -> Option<[f32; 3]> {
+    let (w, h) = (img.width, img.height);
+    let open = open_light(img)?;
+    let ok = |p: &[f32; 3]| luma(*p) > threshold && luma(*p) < open;
+    let mut best: Option<[f32; 3]> = None;
+    for side in Side::ALL {
+        let (start, across) = film_edge(film, side, (w, h));
+        let along = if side.horizontal() { film.x0..film.x1 } else { film.y0..film.y1 };
+        let c = central(along.len());
+        let lines: Vec<usize> = along.skip(c.start).take(c.len()).collect();
+        let line = |i: usize| -> Vec<[f32; 3]> {
+            lines.iter().filter_map(|j| at(side, start + i, *j, w, h).and_then(|(x, y)| px(img, x, y))).filter(ok).collect()
+        };
+        let level = |px: &[[f32; 3]]| -> Option<f32> {
+            if px.len() * 2 < lines.len() {
+                return None;
+            }
+            median(px.iter().map(|p| (luma(*p) + 1e-4).ln()).collect())
+        };
+        let max = ((across as f64) * STRIP_MAX) as usize;
+        // (the film's very first line may be its blurred border)
+        let Some(first) = level(&line(1)) else { continue };
+        let mut n = 1;
+        let mut strip: Vec<[f32; 3]> = Vec::new();
+        while n <= max {
+            let l = line(n);
+            match level(&l) {
+                Some(v) if (v - first).abs() <= STRIP_FLAT => strip.extend(l),
+                _ => break,
+            }
+            n += 1;
+        }
+        if n <= STRIP_MIN || n > max {
+            continue;
+        }
+        let Some(b) = channel_median(&strip) else { continue };
+        if luma(b) > luma(*guess) * BRIGHT_RATIO && best.is_none_or(|o| luma(b) > luma(o)) {
+            best = Some(b);
+        }
+    }
+    best
+}
+
+/// Fewest film pixels (per analysis pixel of the film's length) between the sprocket holes that
+/// give their base.
+const HOLES_BASE_MIN: usize = 2;
+
+/// The film base from the rebate along the rows of sprocket holes: between the holes, film that is
+/// neither light nor holder. A camera's gate never reaches the holes, so this is unexposed film,
+/// whatever the picture next to it.
+fn holes_base(img: &Rgb32f, film: Px, holes: &[Option<HoleRow>; 2], threshold: f32, light: &Light) -> Option<[f32; 3]> {
+    let along_x = film.width() >= film.height();
+    let (l0, l1) = if along_x { (film.x0, film.x1) } else { (film.y0, film.y1) };
+    let mut v: Vec<[f32; 3]> = Vec::new();
+    for r in holes.iter().flatten() {
+        for a in r.outer.min(r.inner)..r.outer.max(r.inner) {
+            for l in l0..l1 {
+                let p = if along_x { px(img, l, a) } else { px(img, a, l) };
+                if let Some(p) = p.filter(|p| luma(*p) > threshold && !light.is(*p)) {
+                    v.push(p);
+                }
+            }
+        }
+    }
+    if v.len() < l1.saturating_sub(l0).saturating_mul(HOLES_BASE_MIN) {
+        return None;
+    }
+    channel_median(&v)
+}
+
 fn channel_median(px: &[[f32; 3]]) -> Option<[f32; 3]> {
     Some([median(px.iter().map(|p| p[0]).collect())?, median(px.iter().map(|p| p[1]).collect())?, median(px.iter().map(|p| p[2]).collect())?])
 }
@@ -1065,6 +1221,13 @@ impl Scan<'_> {
         let skip = (reach / 40).max(2);
         let gaps = self.gap_cands(side, reach);
         let Some(rebate) = median(profile.iter().skip(skip).take(skip * 2).copied().collect()) else { return gaps };
+        // a rebate narrower than the lines skipped (a frame's gap at the scan's edge, where the film
+        // fills the scan): the first lines are the base, the picture follows
+        let narrow = median(profile.iter().skip(1).take(skip.saturating_sub(1)).copied().collect());
+        let (rebate, skip) = match narrow {
+            Some(n) if rebate > REBATE_MAX * self.contrast && n <= REBATE_MAX * self.contrast => (n, 1),
+            _ => (rebate, skip),
+        };
         if rebate > REBATE_MAX * self.contrast {
             // the picture (or something that isn't rebate) reaches the film's edge, unless a gap
             // between frames ends a neighbour's piece here
@@ -1353,6 +1516,39 @@ mod tests {
         assert!(f.sprockets && f.sides_found == 4, "{f:?}");
         let b = f.base.expect("the rebate shows");
         assert!((0..3).all(|i| (b[i] - f64::from(BASE[i])).abs() < 0.02), "{b:?}");
+    }
+
+    /// A scan the film fills (a tight holder: no holder's edge in sight) of one B&W frame: the
+    /// picture reaches the top, a narrow gap between frames at the left, and at the bottom a thin
+    /// rebate strip and the tops of the sprocket holes, cut by the scan's edge. The bands at the
+    /// film's edges are mostly picture, so their median is no base.
+    fn tight(x: f64, y: f64) -> [f32; 3] {
+        const BW: [f32; 3] = [0.55, 0.5, 0.6];
+        if y >= 590.0 && ((x - 40.0).rem_euclid(56.0) - 28.0).abs() < 14.0 {
+            return [0.95, 0.95, 0.95];
+        }
+        if y >= 560.0 || x < 8.0 {
+            return BW;
+        }
+        let t = 0.2 + 0.25 * ((x / 37.0).sin() * (y / 23.0).cos()).abs() + if ((x / 90.0) as i32 + (y / 70.0) as i32) % 2 == 0 { 0.2 } else { 0.0 };
+        BW.map(|c| c * t as f32)
+    }
+
+    #[test]
+    fn a_scan_the_film_fills_takes_its_base_from_between_the_sprocket_holes() {
+        let m = SRGB.to_space(&REC2020).to_f32();
+        let s = Rgb32f::from_fn(W, H, |x, y| {
+            let p = tight(x as f64 + 0.5, y as f64 + 0.5);
+            m.map(|r| r[0] * p[0] + r[1] * p[1] + r[2] * p[2])
+        });
+        let f = detect(&s, None).unwrap();
+        // the picture ends at the rebate strip, not at the scan's edge; the gap at the left is left out
+        assert!((f.picture.y1 - 560.0 / H as f64).abs() < 0.01, "{f:?}");
+        assert!((f.picture.x0 - 8.0 / W as f64).abs() < 0.01, "{f:?}");
+        assert!(f.picture.y0 < 0.01 && f.picture.x1 > 0.99, "{f:?}");
+        assert!(f.holes[1].is_some_and(|h| !h.whole), "the cut holes at the bottom: {f:?}");
+        let b = f.base.expect("the rebate shows");
+        assert!(b.iter().zip([0.55, 0.5, 0.6]).all(|(a, w)| (a - w).abs() < 0.03), "{b:?}");
     }
 
     #[test]
