@@ -35,6 +35,23 @@ fn photo_menu_opens_the_panel_and_the_selector_picks_the_film_base() {
     // the menus put a command that opens a dialog last, after a separator
     assert_eq!(ids, ["photo.convertNegative", "dialog.negativeZap"], "the conversion without cropping, then Zap!…");
     assert!(!photo.iter().any(|n| matches!(n, MenuNode::Item { id, .. } if id == "photo.convertNegative")), "only in the submenu");
+    // Zap! is only Film Scan ▸ Zap!…: the command without the dialog is not in any menu (the panel's
+    // button, the control channel and MCP still run it)
+    fn items<'a>(nodes: &'a [MenuNode], out: &mut Vec<&'a str>) {
+        for n in nodes {
+            match n {
+                MenuNode::Item { id, .. } => out.push(id.as_str()),
+                MenuNode::Submenu { children, .. } => items(children, out),
+                _ => {}
+            }
+        }
+    }
+    let mut all = Vec::new();
+    for (_, nodes) in &bar {
+        items(nodes, &mut all);
+    }
+    assert!(!all.contains(&"develop.negativeZap"), "Zap! without its dialog in a menu: {all:?}");
+    assert_eq!(all.iter().filter(|id| **id == "dialog.negativeZap").count(), 1, "Zap!… once");
     let r = h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
     assert_eq!(r["ok"], true, "{r}");
     h.settle(SETTLE);

@@ -254,7 +254,7 @@ pub struct UiState {
     pub negative_zap_format: String,
     pub negative_zap_sprockets: String,
     pub negative_zap_film: String,
-    /// Photo ▸ Zap!… on several photos: "single" measures each on its own, "roll" measures them
+    /// Photo ▸ Film Scan ▸ Zap!… on several photos: "single" measures each on its own, "roll" measures them
     /// together as one roll.
     pub negative_zap_roll: String,
     /// Active on-canvas tool: "", "brush", "linear", "radial", "wbPicker", "negBase", "negGray", "straighten", "remove",

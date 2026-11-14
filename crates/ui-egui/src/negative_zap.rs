@@ -1,4 +1,4 @@
-//! Zap! from the app: the panel's button and Photo ▸ Zap!… run `develop.negativeZap` with the
+//! Zap! from the app: the panel's button and Photo ▸ Film Scan ▸ Zap!… run `develop.negativeZap` with the
 //! panel's (or the dialog's) margin, format, sprocket holes and film. One photo runs at once; a selection reads and analyses its scans off
 //! the UI thread, listed in the activity stack, and commits them as one undo step.
 use crate::LightcraftApp;

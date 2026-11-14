@@ -113,7 +113,7 @@ fn photo_zap_asks_for_its_choices_and_runs_with_them() {
     let id = h.app.session.active().unwrap();
     let before = h.app.session.develop_of(id).unwrap();
     h.app.ui.negative_zap_format = "35mm".into();
-    // Photo ▸ Zap!… opens the dialog with the last choices, and changes nothing yet
+    // Photo ▸ Film Scan ▸ Zap!… opens the dialog with the last choices, and changes nothing yet
     let r = h.request("ui.menu.invoke", json!({"command": "dialog.negativeZap"}), T);
     assert_eq!(r["ok"], true, "{r}");
     h.settle(SETTLE);
@@ -164,7 +164,7 @@ fn zap_on_a_selection_runs_in_the_background_and_commits_once() {
     app.session.execute("library.select", &json!({"ids": ids.iter().map(|i| i.0).collect::<Vec<_>>(), "active": ids[0].0})).unwrap();
     app.ui.negative_zap_margin = "edge".into();
     let before = app.session.commits();
-    // Photo ▸ Zap! (the panel's button runs the same command)
+    // the panel's Zap! button (Film Scan ▸ Zap!… runs the same command after its dialog)
     let reply = app.run("develop.negativeZap", json!({})).unwrap();
     assert_eq!((reply["pending"].as_bool(), reply["photos"].as_u64()), (Some(true), Some(3)), "{reply}");
     assert_eq!(app.session.commits(), before, "nothing changes until the run is done");
