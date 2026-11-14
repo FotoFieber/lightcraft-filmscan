@@ -48,6 +48,11 @@ pub struct ImportTask {
     run: Option<ImportRun>,
     /// The import's row in the activity stack (its ✕ and `activity.cancel` set the run's cancel flag).
     guard: Option<lightcraft_engine::activity::TaskGuard>,
+    /// Then Zap!…: the import review's choice ([`ImportDialog::zap`]).
+    zap: bool,
+    /// The photos this import added (not the duplicates or those restored from Recently Deleted):
+    /// the ones Then Zap!… asks about.
+    added: Vec<u64>,
 }
 
 impl ImportTask {
@@ -256,7 +261,9 @@ pub fn start(app: &mut LightcraftApp, d: &ImportDialog) -> Result<Value, String>
         }
     }
     let total = queue.len();
-    app.import = Some(ImportTask::new(queue, params, undo0, false));
+    let mut task = ImportTask::new(queue, params, undo0, false);
+    task.zap = d.zap;
+    app.import = Some(task);
     app.renderer.forget_imports();
     Ok(json!({"importing": total}))
 }
@@ -354,6 +361,7 @@ fn commit_batch(app: &mut LightcraftApp, task: &mut ImportTask, prepared: lightc
             }
             let len = |k: &str| v[k].as_array().map_or(0, Vec::len);
             task.imported += len("imported");
+            task.added.extend(v["imported"].as_array().into_iter().flatten().filter_map(Value::as_u64));
             task.restored += len("restored");
             task.duplicates += len("duplicates");
             task.existing.extend(v["duplicates"].as_array().into_iter().flatten().filter_map(|d| d["existing"].as_u64()));
@@ -450,7 +458,15 @@ fn finish(app: &mut LightcraftApp, ctx: &egui::Context, task: ImportTask) {
         quiet_finish(app, ctx, &task);
         return;
     }
-    if let Some(f) = task.first.filter(|_| !task.moved_on) {
+    // Then Zap!…: the photos it added, all of them selected, for the dialog asked last
+    let zap = task.zap && !task.cancelled && !task.added.is_empty();
+    if zap {
+        let first = lightcraft_catalog::PhotoId(task.added[0]);
+        if !app.session.visible().contains(&first) {
+            let _ = app.run("library.source", json!({"kind": "all"}));
+        }
+        let _ = app.run("library.select", json!({"ids": task.added, "active": first.0}));
+    } else if let Some(f) = task.first.filter(|_| !task.moved_on) {
         // a view the new photos aren't in (an album, Picks, a Local folder) would leave the active
         // photo off screen: show All Photos, as Lightroom shows the import's own collection (#1446)
         if !app.session.visible().contains(&lightcraft_catalog::PhotoId(f)) {
@@ -476,6 +492,9 @@ fn finish(app: &mut LightcraftApp, ctx: &egui::Context, task: ImportTask) {
         msg.push_str("\n\n");
         msg.push_str(&xmp_warnings_text(&task.warnings));
         app.toast_for(ctx, msg, 8.0);
+    }
+    if zap && let Err(e) = app.run("dialog.negativeZap", json!({})) {
+        log::warn!("import: Then Zap!…: {e}");
     }
 }
 

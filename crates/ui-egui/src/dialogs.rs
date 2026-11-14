@@ -1184,7 +1184,15 @@ fn negative_zap_body(app: &mut LightcraftApp, ui: &mut egui::Ui, t: &Tokens, dlg
     let n = app.session.selected().len();
     ui.label(egui::RichText::new(crate::i18n::tr_format!("{n} photo{}", if n == 1 { "" } else { "s" }, n = n)).color(t.text_dim));
     let formats: Vec<(&str, &str)> = lightcraft_pipeline::negative_frame::FORMATS.iter().map(|f| (f.0, f.1)).collect();
-    field(ui, "Film", |ui| zap_choice(ui, "negativeZap-film", "A slide is only cropped, never converted", film, &FILMS));
+    field(ui, "Film", |ui| {
+        zap_choice(
+            ui,
+            "negativeZap-film",
+            "A black-and-white negative converts in grey, its film base taken from the rebate (a coloured one too, as on XP2); a slide is only cropped, never converted",
+            film,
+            &FILMS,
+        )
+    });
     field(ui, "Format", |ui| zap_choice(ui, "negativeZap-format", "The film format, for an edge the scan doesn't show", format, &formats));
     field(ui, "Sprocket holes", |ui| {
         zap_choice(ui, "negativeZap-sprockets", "Whether the crop keeps 35 mm film's sprocket holes", sprockets, &SPROCKETS)

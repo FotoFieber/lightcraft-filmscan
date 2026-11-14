@@ -230,6 +230,106 @@ fn zap_as_one_roll_from_the_dialog_and_release_from_the_panel() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Photo ▸ Film Scan ▸ Zap!… offers black-and-white negatives: a selection of them converts with
+/// the monochrome profile, still offered as one roll, and the choice is kept for the next Zap!….
+#[test]
+fn zap_dialog_converts_black_and_white_negatives() {
+    let dir = std::env::temp_dir().join(format!("lc-ui-zap-bw-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let paths: Vec<_> = (0..2).map(|i| dir.join(format!("negative-{i}.png"))).collect();
+    for (i, p) in paths.iter().enumerate() {
+        negative_png(p);
+        let mut bytes = std::fs::read(p).unwrap();
+        bytes.extend(std::iter::repeat_n(0u8, i));
+        std::fs::write(p, bytes).unwrap();
+    }
+    let mut session = lightcraft_engine::Session::new().with_fs();
+    session.execute("library.import", &json!({"paths": paths.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>()})).unwrap();
+    let app = LightcraftApp::new(session, Services { png: None, ..Default::default() });
+    let mut h = Headless::new(app, [1400.0, 900.0], 1.0);
+    let ids: Vec<_> = h.app.session.visible_cloned().to_vec();
+    h.app.session.execute("library.select", &json!({"ids": ids.iter().map(|i| i.0).collect::<Vec<_>>(), "active": ids[0].0})).unwrap();
+    assert!(crate::panels::negative::FILMS.iter().any(|(v, _)| *v == "bw"), "offered in the dialog and the panel");
+    let r = h.request("ui.menu.invoke", json!({"command": "dialog.negativeZap"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    let Some(crate::state::Dialog::NegativeZap { film, .. }) = h.app.ui.dialog.as_mut() else { panic!("the Zap! dialog: {:?}", h.app.ui.dialog) };
+    *film = "bw".into();
+    h.settle(SETTLE);
+    assert!(h.app.widgets.iter().any(|(id, _)| id == "dropdown:negativeZap-roll"), "black-and-white negatives can be a roll");
+    let r = h.request("ui.dialog.confirm", json!({}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    assert!(crate::tasks::wait_for(&mut h.app, &egui::Context::default(), "Zap!", SETTLE));
+    for id in &ids {
+        let n = h.app.session.develop_of(*id).unwrap().negative.clone();
+        assert!(n.enabled && n.preset == "Monochrome", "{id:?}: {n:?}");
+    }
+    assert_eq!(h.app.ui.negative_zap_film, "bw", "remembered for the next Zap!…");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The import review of a folder of two negative scans, added in place, with Then Zap!… `zap`.
+fn import_scans(tag: &str, zap: bool) -> (Headless, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("lc-ui-zap-import-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 0..2 {
+        let p = dir.join(format!("negative-{i}.png"));
+        negative_png(&p);
+        let mut bytes = std::fs::read(&p).unwrap();
+        bytes.extend(std::iter::repeat_n(0u8, i));
+        std::fs::write(&p, bytes).unwrap();
+    }
+    let app = LightcraftApp::new(lightcraft_engine::Session::new().with_fs(), Services { png: None, ..Default::default() });
+    let mut h = Headless::new(app, [1300.0, 1400.0], 1.0);
+    h.app.ui.view = crate::state::ViewMode::PhotoGrid;
+    let r = h.request("engine.execute", json!({"command": "file.addPhotos", "params": {"paths": [dir.to_string_lossy()]}}), T);
+    assert_eq!(r["result"]["scanning"], true, "{r}");
+    assert!(h.step_until(SETTLE, |h| matches!(h.app.ui.dialog, Some(crate::state::Dialog::Import { .. }))), "the review opens");
+    h.settle(SETTLE);
+    assert!(h.app.widgets.iter().any(|(id, _)| id == "check:importZap"), "Then Zap!… in the review, adding in place too");
+    let Some(crate::state::Dialog::Import { opts }) = &mut h.app.ui.dialog else { panic!("no import review") };
+    assert!(!opts.copy && !opts.zap, "added in place, no Zap! unless asked");
+    opts.zap = zap;
+    let r = h.request("ui.dialog.confirm", json!({}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    let t0 = std::time::Instant::now();
+    while h.app.import.is_some() && t0.elapsed() < Duration::from_secs(60) {
+        h.step();
+    }
+    assert!(h.app.import.is_none(), "the import finished");
+    h.settle(SETTLE);
+    (h, dir)
+}
+
+/// Import with Then Zap!…: when it is done the photos it added are selected and Zap!… asks for
+/// them; its choices then zap both. Without it no dialog follows the import.
+#[test]
+fn import_then_zap_asks_for_the_added_photos() {
+    let (mut h, dir) = import_scans("zap", true);
+    let ids: Vec<_> = h.app.session.catalog.photos().map(|p| p.id).collect();
+    assert_eq!(ids.len(), 2);
+    assert!(matches!(h.app.ui.dialog, Some(crate::state::Dialog::NegativeZap { .. })), "Zap!… after the import: {:?}", h.app.ui.dialog);
+    let mut selected = h.app.session.selection.ids.clone();
+    selected.sort();
+    let mut want = ids.clone();
+    want.sort();
+    assert_eq!(selected, want, "the added photos selected");
+    let r = h.request("ui.dialog.confirm", json!({}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    assert!(crate::tasks::wait_for(&mut h.app, &egui::Context::default(), "Zap!", SETTLE));
+    for id in &ids {
+        let d = h.app.session.develop_of(*id).unwrap();
+        assert!(d.negative.enabled && d.negative.zap_crop.is_some(), "{id:?} zapped: {:?}", d.negative);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let (h, dir) = import_scans("plain", false);
+    assert!(h.app.ui.dialog.is_none(), "no dialog without Then Zap!…: {:?}", h.app.ui.dialog);
+    assert!(h.app.session.catalog.photos().all(|p| !p.develop.negative.enabled));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The Film Scan panel fits the right panel at every width, in English and in German: Zap!'s
 /// choices wrap instead of widening the panel, which pushed the sliders' values out of sight.
 #[test]

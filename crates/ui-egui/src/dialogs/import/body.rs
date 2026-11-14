@@ -408,6 +408,13 @@ pub fn body(app: &mut LightcraftApp, ui: &mut egui::Ui, d: &mut ImportDialog) {
             }
         });
     });
+    // (every mode: a folder of film scans added in place is the usual way)
+    field(ui, "Film Scan", |ui| {
+        let r = ui
+            .checkbox(&mut d.zap, crate::i18n::tr("Then Zap!…"))
+            .on_hover_text(crate::i18n::tr("When the import is done, Zap!… asks for its choices for the photos it added"));
+        register(ui, "check:importZap", r.rect);
+    });
     field(ui, "Preset", |ui| {
         let cur = app
             .session

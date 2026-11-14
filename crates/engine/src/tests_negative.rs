@@ -101,6 +101,42 @@ fn zap_measures_a_turned_frame_as_measure_again_does() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Zap! on a black-and-white negative converts it with the monochrome profile, its base still
+/// from the rebate: a chromogenic film (XP2) has a coloured base, which must turn black, not tint
+/// the picture. A colour negative afterwards leaves the monochrome profile.
+#[test]
+fn zap_converts_a_black_and_white_negative_on_its_coloured_base() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-bw-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // an XP2-like base: purple-brown, not grey
+    let base = [0.55, 0.38, 0.45];
+    let path = negative_scan_of(&dir, "xp2", 0.0, base, 1.0);
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let id = s.active().unwrap();
+    assert!(s.execute("develop.negativeZap", &json!({"film": "grey"})).is_err(), "an unknown film is refused");
+    s.execute("develop.negativeZap", &json!({"film": "bw"})).unwrap();
+    let d = s.develop_of(id).unwrap();
+    assert_eq!(d.negative.preset, crate::negative_zap::MONOCHROME);
+    let b = d.negative.base.expect("the base from the rebate");
+    assert!(b.iter().zip(base).all(|(a, w)| (a - w as f64).abs() < 0.04), "the coloured base as it is: {b:?}");
+    // the conversion of the scan's own pixels: grey in the picture, black on the rebate
+    let src = s.source_now(id, crate::media::SourceLevel::Preview).unwrap();
+    let convert = lightcraft_pipeline::negative::pixel_converter(&d);
+    let at = |x: f64, y: f64| src.get((x * src.width as f64) as usize, (y * src.height as f64) as usize);
+    for (x, y) in [(0.3, 0.3), (0.5, 0.5), (0.7, 0.6)] {
+        let p = convert(at(x, y));
+        assert!((p[0] - p[1]).abs() < 1e-3 && (p[1] - p[2]).abs() < 1e-3, "grey at {x},{y}: {p:?}");
+        assert!(p[1] > 0.02, "the picture is not black at {x},{y}: {p:?}");
+    }
+    let rebate = convert(at(90.0 / 900.0, 0.5));
+    assert!(rebate.iter().all(|v| *v < 0.01), "the coloured base converts to black: {rebate:?}");
+    // a colour negative leaves the monochrome profile
+    s.execute("develop.negativeZap", &json!({"film": "negative"})).unwrap();
+    assert_eq!(s.develop_of(id).unwrap().negative.preset, "Standard");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn zap_removes_the_sprocket_holes_or_crops_to_the_whole_film() {
     let dir = std::env::temp_dir().join(format!("lc-zap-holes-{}", std::process::id()));

@@ -51,7 +51,7 @@ pub(crate) const SPROCKETS: [(&str, &str); 2] = [("remove", "Remove Sprocket Hol
 /// Zap!… on several photos: each measured on its own, or all together as one roll.
 pub(crate) const ROLLS: [(&str, &str); 2] = [("single", "Each Photo on Its Own"), ("roll", "As One Roll")];
 /// What was scanned, as `develop.negativeZap` takes it.
-pub(crate) const FILMS: [(&str, &str); 2] = [("negative", "Negative"), ("slide", "Slide")];
+pub(crate) const FILMS: [(&str, &str); 3] = [("negative", "Negative"), ("bw", "B&W Negative"), ("slide", "Slide")];
 const WBS: [(&str, &str); 4] = [("as_is", "As Shot"), ("warm", "Warm"), ("cool", "Cool"), ("tungsten_film", "Tungsten Film")];
 
 /// A label of this panel, in its context ([`crate::i18n::NEGATIVE_CONTEXT`]).
@@ -174,7 +174,7 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             let tip = "Whether the crop keeps 35 mm film's sprocket holes";
             zap_choice(ui, "negative-zapSprockets", tip, &mut app.ui.negative_zap_sprockets, &SPROCKETS);
-            zap_choice(ui, "negative-zapFilm", "A slide is only cropped, never converted", &mut app.ui.negative_zap_film, &FILMS);
+            zap_choice(ui, "negative-zapFilm", "A black-and-white negative converts in grey, its film base taken from the rebate (a coloured one too, as on XP2); a slide is only cropped, never converted", &mut app.ui.negative_zap_film, &FILMS);
         });
     });
 }

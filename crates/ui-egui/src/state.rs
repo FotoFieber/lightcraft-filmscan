@@ -249,7 +249,7 @@ pub struct UiState {
     /// Convert Negative's Zap!: where the crop sits on the picture's edge ("inside" | "edge" |
     /// "border", or "film": the whole film), the film format that places a side the scan doesn't show
     /// (`lightcraft_pipeline::negative_frame::FORMATS`), whether the crop keeps 35 mm's sprocket
-    /// holes ("remove" | "keep") and what was scanned ("negative" | "slide").
+    /// holes ("remove" | "keep") and what was scanned ("negative" | "bw" | "slide").
     pub negative_zap_margin: String,
     pub negative_zap_format: String,
     pub negative_zap_sprockets: String,

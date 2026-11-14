@@ -34,9 +34,19 @@ pub enum Film {
     /// A negative: cropped, and converted with the base from its rebate.
     #[default]
     Negative,
+    /// A black-and-white negative: found, cropped and measured as a colour one, converted with
+    /// the monochrome film profile ([`MONOCHROME`]). The base still comes from the rebate, never
+    /// assumed grey: a chromogenic film (Ilford XP2) has a coloured base.
+    BwNegative,
     /// A slide (a positive): only cropped, never converted.
     Slide,
 }
+
+/// The film profile a black-and-white negative converts with.
+pub const MONOCHROME: &str = "Monochrome";
+
+/// The film profile a colour negative falls back to when it had a monochrome one.
+const STANDARD: &str = "Standard";
 
 /// Where the crop sits, the film format, the sprocket holes and the kind of film, the same for
 /// every photo of a run.
@@ -79,8 +89,9 @@ impl Options {
         let film = match p.get("film") {
             None | Some(Value::Null) => Film::Negative,
             Some(Value::String(v)) if v == "negative" => Film::Negative,
+            Some(Value::String(v)) if v == "bw" => Film::BwNegative,
             Some(Value::String(v)) if v == "slide" => Film::Slide,
-            Some(v) => return Err(format!("`film` must be negative or slide, not {v}")),
+            Some(v) => return Err(format!("`film` must be negative, bw or slide, not {v}")),
         };
         let roll = match p.get("roll") {
             None | Some(Value::Null) => false,
@@ -141,7 +152,7 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
     let found = match o.film {
         _ if o.margin == Margin::Film => negative_frame::detect_strip(&oriented),
         Film::Slide => negative_frame::detect_slide(&oriented, o.ratio),
-        Film::Negative => negative_frame::detect(&oriented, o.ratio),
+        Film::Negative | Film::BwNegative => negative_frame::detect(&oriented, o.ratio),
     };
     // measured on the picture itself (inside its edge, never the holes or the rebate)
     let picture = |f: &Frame| Frame { holes: [None, None], ..*f }.crop(Margin::Inside, ow, oh);
@@ -163,14 +174,14 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
             Ok(f) => (picture_of(f), 0.0, Some(f)),
             Err(_) => (geometry, OWN_CROP_BORDER, None),
         };
-        let settings = converted(before, measure_in(scan, before, g, border)?, frame.and_then(|f| f.base));
+        let settings = converted(before, o.film, measure_in(scan, before, g, border)?, frame.and_then(|f| f.base));
         let samples = samples(g, border, frame.and_then(|f| f.base))?;
         return Ok(Zapped { settings, report: report(&geometry, frame, true), samples });
     }
     let frame = found?;
     let geometry = crop_of(&frame, dims, o, (ow, oh))?;
     let measured = measure_in(scan, before, picture_of(&frame), 0.0)?;
-    let mut settings = converted(before, measured, frame.base);
+    let mut settings = converted(before, o.film, measured, frame.base);
     settings.crop.geometry = geometry;
     settings.negative.zap_crop = Some(geometry);
     Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples: samples(picture_of(&frame), 0.0, frame.base)? })
@@ -206,10 +217,18 @@ fn slide(before: &DevelopSettings, found: Result<Frame, String>, dims: (f64, f64
     Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples: None })
 }
 
-/// `before` converted with `measured` and, when the rebate showed, the film base.
-fn converted(before: &DevelopSettings, measured: NegativeMeasurement, base: Option<[f64; 3]>) -> DevelopSettings {
+/// `before` converted with `measured` and, when the rebate showed, the film base; with the
+/// monochrome profile for a black-and-white negative, and away from it for a colour one (another
+/// colour profile the user chose stays).
+fn converted(before: &DevelopSettings, film: Film, measured: NegativeMeasurement, base: Option<[f64; 3]>) -> DevelopSettings {
     let mut settings = before.clone();
     let n = &mut settings.negative;
+    let monochrome = lightcraft_pipeline::negative::preset_of(n).monochrome;
+    if film == Film::BwNegative && !monochrome {
+        n.preset = MONOCHROME.into();
+    } else if film == Film::Negative && monochrome {
+        n.preset = STANDARD.into();
+    }
     n.enabled = true;
     n.measured = Some(measured);
     // measured on its own, out of any roll it was in
