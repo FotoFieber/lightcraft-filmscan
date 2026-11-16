@@ -95,7 +95,11 @@ if [[ -f "$ROOT/dist/fotofieber/lightcraft-filmscan-$VERSION-windows-x64.zip" ]]
   other_install+="**Windows:** unzip and start \`lightcraft-filmscan.exe\` in the folder **LightCraft Film Scan**. It is not signed, so SmartScreen asks first: **More info ▸ Run anyway**. Settings: \`%APPDATA%\\LightCraft Film Scan\`."$'\n\n'
 fi
 if [[ -n "$other_install" ]]; then
-  other_install+="> [!WARNING]"$'\n'"> **Use at your own risk.** The macOS and Windows builds come from GitHub Actions (\`.github/workflows/fotofieber-build.yml\`) and are **not tested by the maintainer**: GitHub only checks that the command-line tool starts and renders the demo library. They are not signed. Keep backups of your photos, and please [report](https://github.com/$FORK/issues) what works and what doesn't."$'\n\n'
+  # Name only the builds this release has.
+  platforms=""
+  [[ -f "$ROOT/dist/fotofieber/lightcraft-filmscan-$VERSION-macos-universal.zip" ]] && platforms="macOS"
+  [[ -f "$ROOT/dist/fotofieber/lightcraft-filmscan-$VERSION-windows-x64.zip" ]] && platforms+="${platforms:+ and }Windows"
+  other_install+="> [!WARNING]"$'\n'"> **Use at your own risk.** The $platforms builds come from GitHub Actions (\`.github/workflows/fotofieber-build.yml\`) and are **not tested by the maintainer**: GitHub only checks that the command-line tool starts and renders the demo library. They are not signed. Keep backups of your photos, and please [report](https://github.com/$FORK/issues) what works and what doesn't."$'\n\n'
 fi
 
 shots=""
