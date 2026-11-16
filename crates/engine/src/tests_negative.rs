@@ -625,7 +625,8 @@ fn zap_roll_on_real_scans() {
 /// Opt-in: Zap! on every scan of a truth file (`LC_ZAP_TRUTH`: `{path: {film, ..}}`, the user's
 /// crops), each folder zapped as one selection, the crops written to `LC_ZAP_RESULT` as
 /// `{path: {rect, angle}}` for a scorer to compare. `LC_ZAP_ONLY` keeps the paths containing it;
-/// `LC_ZAP_ROLL` zaps each folder as one roll.
+/// `LC_ZAP_ROLL` zaps each folder as one roll. Each photo's conversion (`negative`) is written too, so two
+/// builds can be compared for identical results.
 #[test]
 #[ignore = "needs the user's scans"]
 fn zap_eval_on_truth() {
@@ -658,8 +659,77 @@ fn zap_eval_on_truth() {
             let lightcraft_catalog::Source::File { path } = &p.source else { continue };
             let g = d.crop.geometry;
             let zapped = d.negative.zap_crop.is_some();
-            out.insert(path.clone(), json!({"rect": [g.rect.x0, g.rect.y0, g.rect.x1, g.rect.y1], "angle": g.angle, "zapped": zapped, "orientation": format!("{:?}", d.orientation)}));
+            out.insert(path.clone(), json!({"rect": [g.rect.x0, g.rect.y0, g.rect.x1, g.rect.y1], "angle": g.angle, "zapped": zapped, "orientation": format!("{:?}", d.orientation), "negative": serde_json::to_value(&d.negative).unwrap()}));
         }
     }
     std::fs::write(result, serde_json::to_string(&out).unwrap()).unwrap();
+}
+
+/// Zap! on a selection runs a few photos at once: each gets exactly what Zap! on it alone gives,
+/// and the run lists them in the selection's order.
+#[test]
+fn zap_on_a_selection_matches_zap_one_photo_at_a_time() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-parallel-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let base = [0.62, 0.26, 0.07];
+    let paths: Vec<String> = [(1.0, 1.0), (-1.0, 1.0), (0.5, 0.45), (-0.5, 0.8), (0.0, 1.2), (0.8, 0.6)]
+        .iter()
+        .enumerate()
+        .map(|(i, (angle, density))| negative_scan_of(&dir, &format!("f{i}"), *angle, base, *density).to_string_lossy().to_string())
+        .collect();
+    let zapped = |ids: Option<&[u64]>, roll: bool| {
+        let mut s = Session::new().with_fs();
+        s.execute("library.import", &json!({"paths": paths})).unwrap();
+        let all: Vec<u64> = s.visible_cloned().iter().map(|p| p.0).collect();
+        match ids {
+            // one photo per call
+            Some(_) => {
+                for id in &all {
+                    s.execute("develop.negativeZap", &json!({"ids": [id]})).unwrap();
+                }
+            }
+            None => {
+                let r = s.execute("develop.negativeZap", &json!({"ids": all, "roll": roll})).unwrap();
+                assert_eq!(r["changed"], json!(all.len()), "{r}");
+            }
+        }
+        all.iter().map(|id| s.develop_of(crate::PhotoId(*id)).unwrap()).map(|d| (d.crop.geometry, d.negative.clone())).collect::<Vec<_>>()
+    };
+    assert_eq!(zapped(None, false), zapped(Some(&[]), false), "a selection zaps each photo as Zap! on it alone");
+    assert_eq!(zapped(None, true), zapped(None, true), "a roll comes out the same every time");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The photos of a run come back in their order whatever the number of threads, and a stop
+/// leaves the photos not yet started out.
+#[test]
+fn map_bounded_keeps_the_order_and_stops() {
+    let items: Vec<u64> = (0..37).collect();
+    let f = |v: &u64| {
+        // uneven work, so the threads finish out of order
+        std::thread::sleep(std::time::Duration::from_micros((v * 7919) % 500));
+        v * v
+    };
+    let one = crate::negative_zap::map_bounded(&items, 1, &|| false, &|_| {}, &f);
+    let done = std::sync::atomic::AtomicUsize::new(0);
+    let four = crate::negative_zap::map_bounded(&items, 4, &|| false, &|n| _ = done.fetch_max(n, std::sync::atomic::Ordering::Relaxed), &f);
+    assert_eq!(one, four);
+    assert_eq!(four, items.iter().map(|v| Some(v * v)).collect::<Vec<_>>());
+    assert_eq!(done.into_inner(), items.len());
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    let stopped = crate::negative_zap::map_bounded(
+        &items,
+        4,
+        &|| stop.load(std::sync::atomic::Ordering::Relaxed),
+        &|n| {
+            if n >= 5 {
+                stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        },
+        &f,
+    );
+    let ran = stopped.iter().flatten().count();
+    assert!((5..items.len()).contains(&ran), "{ran}");
+    assert!(crate::negative_zap::map_bounded(&Vec::<u64>::new(), 4, &|| false, &|_| {}, &f).is_empty());
+    assert!((1..=crate::negative_zap::MAX_WORKERS).contains(&crate::negative_zap::workers()));
 }

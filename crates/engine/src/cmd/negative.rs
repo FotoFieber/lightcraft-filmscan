@@ -83,10 +83,26 @@ fn zap(s: &mut Session, p: &Value) -> Result<Value> {
     let many = ids.len() > 1;
     let mut zapped = Vec::new();
     let mut failed: Vec<(PhotoId, String)> = Vec::new();
-    for id in ids {
-        match zap_photo(s, id, o) {
-            Ok(z) => zapped.push((id, z)),
-            Err(e) => failed.push((id, e)),
+    if many {
+        // a few photos at once, read apart from the session, each result kept in the selection's order
+        let inputs: Vec<negative_zap::Input> = ids.iter().filter_map(|id| negative_zap::Input::of(s, *id)).collect();
+        let results = negative_zap::map_bounded(&inputs, negative_zap::workers(), &|| false, &|_| {}, &|i: &negative_zap::Input| i.run_with_info(o));
+        for (input, result) in inputs.iter().zip(results) {
+            let (r, info) = result.unwrap_or_else(|| (Err("Zap! stopped on this photo".into()), None));
+            if let Some(info) = &info {
+                s.learn_as_shot_wb(input.id, info);
+            }
+            match r {
+                Ok(z) => zapped.push((input.id, z)),
+                Err(e) => failed.push((input.id, e)),
+            }
+        }
+    } else {
+        for id in ids {
+            match zap_photo(s, id, o) {
+                Ok(z) => zapped.push((id, z)),
+                Err(e) => failed.push((id, e)),
+            }
         }
     }
     // one roll's frames agree on their crop: a frame far off the others' is moved and measured again

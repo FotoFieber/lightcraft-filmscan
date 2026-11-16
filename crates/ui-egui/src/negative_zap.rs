@@ -57,21 +57,25 @@ impl Prepared {
         let mut read = Vec::with_capacity(self.inputs.len());
         let mut sources = Vec::with_capacity(self.inputs.len());
         let mut failed = Vec::new();
-        for (i, input) in self.inputs.into_iter().enumerate() {
-            if cancelled() {
-                return Err(crate::i18n::tr("Zap! cancelled").into());
+        // a few photos at once, each result kept in the selection's order
+        let done = |n: usize| {
+            if let Some(p) = progress {
+                p.progress(n as u64, total);
             }
+        };
+        let results = negative_zap::map_bounded(&self.inputs, negative_zap::workers(), &cancelled, &done, &|input: &Input| input.run(self.options));
+        if cancelled() {
+            return Err(crate::i18n::tr("Zap! cancelled").into());
+        }
+        for (input, result) in self.inputs.into_iter().zip(results) {
             // a scan with no frame on it (or that can't be read) is left out, not the whole selection
-            match input.run(self.options) {
+            match result.unwrap_or_else(|| Err("Zap! stopped on this photo".into())) {
                 Ok(z) => {
                     zapped.push((input.id, z));
                     read.push(input.settings.clone());
                     sources.push(input);
                 }
                 Err(e) => failed.push((input.id, e)),
-            }
-            if let Some(p) = progress {
-                p.progress(i as u64 + 1, total);
             }
         }
         if cancelled() {

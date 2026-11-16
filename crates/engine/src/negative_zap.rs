@@ -557,8 +557,15 @@ impl Input {
 
     /// Reads the photo's scan and runs Zap! on it.
     pub fn run(&self, o: Options) -> Result<Zapped, String> {
-        let source = self.source.load_source()?;
-        zap(&source.image, &self.settings, self.dims, o)
+        self.run_with_info(o).0
+    }
+
+    /// [`Self::run`], with what the decoder said about the scan (`None` when it could not be read).
+    pub fn run_with_info(&self, o: Options) -> (Result<Zapped, String>, Option<lightcraft_pipeline::SourceInfo>) {
+        match self.source.load_source() {
+            Ok(source) => (zap(&source.image, &self.settings, self.dims, o), source.info.clone()),
+            Err(e) => (Err(e), None),
+        }
     }
 
     /// Reads the photo's scan again and measures `z` inside its crop ([`remeasure`]).
@@ -566,6 +573,60 @@ impl Input {
         let source = self.source.load_source()?;
         remeasure(&source.image, z, own)
     }
+}
+
+/// Most photos of a selection Zap! reads and analyses at once: each one's decode and analysis
+/// already use several cores, so a few side by side fill the rest (measured on 61 MP scans with 20
+/// threads: 2.25× faster with 4 at once, little more beyond) without holding many decoded scans in
+/// memory.
+pub const MAX_WORKERS: usize = 4;
+
+/// How many photos [`map_bounded`] runs at once on this machine: one per four cores, 1 to
+/// [`MAX_WORKERS`].
+pub fn workers() -> usize {
+    (std::thread::available_parallelism().map_or(1, |n| n.get()) / 4).clamp(1, MAX_WORKERS)
+}
+
+/// `f` on each of `items`, on up to `workers` threads at once, the results in the order of `items`.
+/// Before each item `stop` is asked; an item not started because it said so, or whose thread
+/// failed, is `None`. `done` hears how many have finished after each one.
+pub fn map_bounded<T: Sync, R: Send>(
+    items: &[T],
+    workers: usize,
+    stop: &(dyn Fn() -> bool + Sync),
+    done: &(dyn Fn(usize) + Sync),
+    f: &(dyn Fn(&T) -> R + Sync),
+) -> Vec<Option<R>> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let next = AtomicUsize::new(0);
+    let finished = AtomicUsize::new(0);
+    let work = || {
+        let mut out = Vec::new();
+        loop {
+            if stop() {
+                break;
+            }
+            let i = next.fetch_add(1, Ordering::Relaxed);
+            let Some(item) = items.get(i) else { break };
+            out.push((i, f(item)));
+            done(finished.fetch_add(1, Ordering::Relaxed) + 1);
+        }
+        out
+    };
+    let mut results: Vec<Option<R>> = std::iter::repeat_with(|| None).take(items.len()).collect();
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..workers.clamp(1, items.len().max(1))).map(|_| s.spawn(work)).collect();
+        for h in handles {
+            // (a thread that panicked leaves its items `None`: they count as failed, the run goes on)
+            let Ok(part) = h.join() else { continue };
+            for (i, r) in part {
+                if let Some(slot) = results.get_mut(i) {
+                    *slot = Some(r);
+                }
+            }
+        }
+    });
+    results
 }
 
 /// A run's outcome as `develop.negativeZap` reports it: how many photos changed, and each photo
