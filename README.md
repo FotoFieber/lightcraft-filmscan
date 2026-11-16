@@ -9,9 +9,13 @@
 >   negative and slide scans into positives, Zap!, the roll mode) and to give feedback on them, before they may
 >   come to LightCraft itself. What proves useful is meant to go upstream; once LightCraft ships these features,
 >   the official version is the one to use.
-> - **Download:** a `.deb` for Debian, Ubuntu, Mint, Zorin and others (x86_64, glibc ≥ 2.35) on the
+> - **Download:** a `.deb` for Debian, Ubuntu, Mint, Zorin and others (x86_64, glibc ≥ 2.35), and since
+>   0.21.1+filmscan.7 also a ZIP for Windows (x64) and for macOS (Apple silicon and Intel), on the
 >   [releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases); each release names the upstream version it
->   is based on and lists every change, commit by commit.
+>   is based on and lists every change, commit by commit. See [Downloads](#downloads).
+> - **Use at your own risk.** This is an unofficial playground build, without any warranty (see the licences).
+>   The Windows and macOS builds are made on GitHub's machines, are not signed and are not tested by the
+>   maintainer: only built and started there. Keep backups of your photos.
 > - **Where the changes come from:** Convert Negative part 1/4 is upstream
 >   ([#2490](https://github.com/storytold/lightcraft/pull/2490)); parts 2–4 are the open upstream pull requests
 >   [#3985](https://github.com/storytold/lightcraft/pull/3985), [#3986](https://github.com/storytold/lightcraft/pull/3986)
@@ -607,26 +611,47 @@ the roll mode in this build go to [its issues](https://github.com/FotoFieber/lig
 
 ## Downloads
 
-LightCraft Film Scan ships one binary: a **`.deb` package for x86_64 Linux**, on the
-[releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases) (the [latest release](https://github.com/FotoFieber/lightcraft-filmscan/releases/latest)
-is the newest). Each release names the LightCraft version it is based on.
+> [!WARNING]
+> **Use at your own risk.** LightCraft Film Scan is an unofficial playground build and comes without any warranty
+> (see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE)). The **Windows and macOS builds are not
+> tested by the maintainer**: GitHub Actions builds them, checks that the command-line tool starts and renders the
+> demo library, and nothing more. They are not signed. Keep backups of your photos, and please
+> [report](https://github.com/FotoFieber/lightcraft-filmscan/issues) what works and what doesn't.
+
+LightCraft Film Scan is on the [releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases) (the
+[latest release](https://github.com/FotoFieber/lightcraft-filmscan/releases/latest) is the newest). Each release names
+the LightCraft version it is based on. Windows and macOS builds are there from 0.21.1+filmscan.7 on.
 
 | File | For |
 |---|---|
 | `lightcraft-filmscan-<ver>-linux-x86_64.deb` | Debian 12+, Ubuntu 22.04+, Linux Mint 21+, Zorin OS 17+, Pop!_OS and other Debian-based distributions on x86_64 (glibc 2.35 or newer) |
-| `SHA256SUMS.txt` | the checksum of the `.deb` |
+| `lightcraft-filmscan-<ver>-windows-x64.zip` | Windows 10 and 11 on x64: a folder to unzip anywhere, no installer (untested) |
+| `lightcraft-filmscan-<ver>-macos-universal.zip` | macOS 11 or newer, Apple silicon and Intel: **LightCraft Film Scan.app** (untested) |
+| `lightcraft-filmscan-cli-<ver>-macos-universal.zip` | the command-line tool for macOS (untested) |
+| `SHA256SUMS.txt` | the checksums of the packages |
 | `lightcraft-filmscan-<ver>-vs-<upstream-ver>.diff` | the whole difference to the upstream version as one unified diff |
 | `lightcraft-filmscan-patches-<upstream-ver>.tar.gz` | the same changes commit by commit, as `git format-patch` files |
 | Source code (zip / tar.gz) | the full source of the release |
 
-Install it with `sudo apt install ./lightcraft-filmscan-<ver>-linux-x86_64.deb`. It installs **beside** an official
+**Linux:** install it with `sudo apt install ./lightcraft-filmscan-<ver>-linux-x86_64.deb`. It installs **beside** an official
 LightCraft: the menu entry is **LightCraft Film Scan**, the commands are `lightcraft-filmscan` and
 `lightcraft-filmscan-cli`, and it keeps its own settings (`~/.config/lightcraft-filmscan`) and its own library
 (`~/Pictures/LightCraft Film Scan Library`), so the official LightCraft never opens photos with film settings it
 doesn't know. `LIGHTCRAFT_CONFIG_DIR` and `LIGHTCRAFT_LIBRARY` choose other folders. Help ▸ Check for Updates
 reports official releases.
 
-On other systems (Windows, macOS, other Linux distributions, FreeBSD, the web) build this branch from source, see
+**Windows:** unzip and start `lightcraft.exe` in the folder **LightCraft Film Scan**. It is not signed, so
+SmartScreen asks first: **More info ▸ Run anyway**. Settings: `%APPDATA%\LightCraft Film Scan`; library:
+`LightCraft Film Scan Library` in your Pictures folder.
+
+**macOS:** unzip and drag **LightCraft Film Scan** to Applications. The app is not signed by Apple, so macOS refuses
+the first start: open System Settings ▸ Privacy & Security and click **Open Anyway** (or run
+`xattr -dr com.apple.quarantine "/Applications/LightCraft Film Scan.app"`). Settings:
+`~/Library/Application Support/LightCraft Film Scan`; library: `LightCraft Film Scan Library` in your Pictures folder.
+
+On Windows and macOS, too, it keeps its settings and library apart from an official LightCraft.
+
+On other systems (other Linux distributions, FreeBSD, the web) build this branch from source, see
 [Quick start](#quick-start). The official LightCraft builds for all of them, without Convert Negative, are on the
 [original releases page](https://github.com/storytold/lightcraft/releases).
 
