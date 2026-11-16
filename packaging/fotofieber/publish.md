@@ -89,6 +89,69 @@ Then follow the steps below.
 
 ## Log
 
+### 2026-11-16: state before v0.21.1-filmscan.6
+
+**Upstream**
+- Still v0.21.1 (2026-11-12). `main` has 133 commits since then, none on Convert Negative or `crates/film`. They are mostly the craft-libs cut-over (TIFF/JPEG/PSD/print).
+- #3985 (`2404f941`, mergeable), #3986 (`a529bdb2`) and #3987 (`a9d3c229`) are unchanged since 2026-11-13. #3986 and #3987 are conflicting. There is no review and no comment since then.
+- @manueldeprada's `cr-2-pipeline` (`f84a8499`), `cr-3-engine` (`4c800191`) and `cr-4-panel` (`bc02c044`) are unchanged. We took them in with `c0a0d408`, and @smyrgeorge hasn't yet.
+- #3623 (`45b866f8`) is open and mergeable, with no review. It only merged `main` (2026-11-13 to 15): no new ideas.
+- No maintainer has ruled on the series or on #3623.
+
+**New compared with the published v0.21.1-filmscan.2** (12 commits, all ours or already taken in):
+- @manueldeprada's fixes to the series (`c0a0d408`), and Zap! measuring a turned frame straightened.
+- Zap! is only Photo ▸ Film Scan ▸ Zap!… (`3920d313`).
+- B&W Negative, and "Then Zap!…" in the import review (`b7cda261`).
+- The rebate is found where the film fills the scan (`e2c6bf8d`).
+- As One Roll, the frames agree on their crop (`6071bd2d`).
+- Speed (`31617013`, `58de1617`, `b6898ae2`):
+  - Zap! on a selection works on up to 4 photos at once: 24 scans of 61 MP take 17.6 s instead of 9.0 s.
+  - A final render of a negative is ~0.6 s faster.
+  - Results are byte-identical on the 330-scan eval, single and roll.
+
+**Risks**
+- The parallel Zap! is new. Its tests pass and the eval is identical, but nobody has used it in the app yet: check the activity row, Cancel and the single undo step.
+- `b6898ae2` changes upstream code (the colour noise model). That is a possible merge conflict later, and a candidate PR upstream.
+- The series is still unreviewed upstream, so its hashes may change again.
+
+**Recommendation**
+- Release now as `v0.21.1-filmscan.6`. Nothing upstream is waiting to be taken in.
+- The .3–.5 builds were never published but were installed locally, so the number goes past them.
+- Credit @manueldeprada in the notes for the `cr-*` fixes.
+
+### 2026-11-14: could AI improve Zap!'s crop? (study, no code change)
+
+**Method**
+- The 330 truth crops were checked against Zap! filmscan.5 (single mode: 106/141/171 within 1/2/4 %), with overlays of the worst rolls.
+- A temporary candidate dump gave an oracle: the best of Zap!'s own edge candidates per side.
+
+**The 159 misses over 4 %**
+
+| Count | Cause | Zap! error? |
+|---|---|---|
+| ~85 | The user kept the sprocket holes or the film edge (Sommer every frame, PhoenixII and Kentmere partly) | No: a margin choice |
+| ~22 | Composition crops inside the frame | No |
+| ~23 | Slides | |
+| ~9 | Zuerichsee: the user turned the photo, so its truth is in other coordinates | No |
+| ~25–30 | A scene edge taken for the frame (dark sky or night, RPX/Kentmere, GS1), or the film fills the scan | Yes |
+
+**Oracle**
+- Picking the best existing candidate per side gives 114/149/181, only +8/+8/+10 over Zap!.
+- So a learned scorer over the existing candidates (the cheap route) can gain at most ~3 % of photos.
+
+**Existing models**
+- SAM 3 is in-tree, but it is gated, 3.4 GB, under a licence outside the allowlist, and runs on the CPU on Linux. It segments objects, not a camera gate against a dark scene.
+- Generic edge detectors find the edges Zap! already has.
+- None addresses the real failure.
+
+**Own CNN**
+- The real errors are ~30 photos, too few to train or to validate an edge model.
+- It would need several hundred checked frame crops (frame crops, not composition crops) from varied rolls.
+
+**Recommendation**
+- No AI for now.
+- The bigger lever is the margin: let Zap! keep the holes when the user wants it (per roll, remembered), and keep the truth clean (a flag for composition crops).
+- Revisit a small CNN once ≥ 300 checked frame crops exist.
 ### 2026-11-14: scheduled workflows off on the fork
 
 - FreeBSD, Release and Windows ARM64 are disabled on `FotoFieber/lightcraft-filmscan` with `gh workflow disable`.
