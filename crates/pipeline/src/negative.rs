@@ -108,6 +108,38 @@ pub fn converter(n: &Negative) -> Converter {
     Converter::new(&a, &p, Encoding::Linear, neutral)
 }
 
+/// A conversion ready to run: the converter of a [`Negative`] and its tables.
+type Prepared = std::sync::Arc<(Converter, Box<Tables>)>;
+
+/// How many conversions [`prepared`] keeps (photos rendered side by side, the thumbnails among them).
+const PREPARED_KEPT: usize = 8;
+
+/// The most recently used conversions, by the settings they were made from.
+static PREPARED: std::sync::Mutex<Vec<(Negative, Prepared)>> = std::sync::Mutex::new(Vec::new());
+
+/// The converter of `n` and its tables, made once for the same settings: a render converts its
+/// tiles (and the noise model's 144) with the same settings, and the tables take about a
+/// millisecond to fill. The converter is a pure function of the settings, so a kept one converts
+/// exactly as a new one.
+fn prepared(n: &Negative) -> Prepared {
+    let mut kept = PREPARED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(i) = kept.iter().position(|(k, _)| k == n) {
+        let entry = kept.remove(i);
+        let p = entry.1.clone();
+        kept.push(entry);
+        return p;
+    }
+    let c = converter(n);
+    let mut tables = Box::new(Tables::blank());
+    c.tables(&mut tables);
+    let p = std::sync::Arc::new((c, tables));
+    if kept.len() >= PREPARED_KEPT {
+        kept.remove(0);
+    }
+    kept.push((n.clone(), p.clone()));
+    p
+}
+
 /// Converts `img` (linear Rec.2020, a plain scan) in place when the settings convert a negative.
 pub fn apply(img: &mut Rgb32f, s: &DevelopSettings) {
     apply_in(img, s, None);
@@ -121,9 +153,8 @@ pub fn apply_in(img: &mut Rgb32f, s: &DevelopSettings, frame: Option<&Frame>) {
         return;
     }
     crate::timed("negative", || {
-        let c = converter(&s.negative);
-        let mut tables = Box::new(Tables::blank());
-        c.tables(&mut tables);
+        let p = prepared(&s.negative);
+        let (c, tables) = (&p.0, &p.1);
         let (into, back) = (to_srgb().to_f32(), to_rec2020().to_f32());
         let mul = |m: &[[f32; 3]; 3], v: [f32; 3]| m.map(|r| r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
         let (w, h) = (img.width, img.height);
@@ -134,7 +165,7 @@ pub fn apply_in(img: &mut Rgb32f, s: &DevelopSettings, frame: Option<&Frame>) {
                     continue;
                 }
                 let scan = mul(&into, *px).map(unit);
-                *px = mul(&back, c.convert_with(&tables, scan));
+                *px = mul(&back, c.convert_with(tables, scan));
             }
         });
     });
@@ -143,15 +174,11 @@ pub fn apply_in(img: &mut Rgb32f, s: &DevelopSettings, frame: Option<&Frame>) {
 /// The conversion of one source pixel (linear Rec.2020) to the positive the pipeline sees, for a
 /// few samples (a picker): the identity while the settings convert no negative.
 pub fn pixel_converter(s: &DevelopSettings) -> impl Fn([f32; 3]) -> [f32; 3] + use<> {
-    let on = enabled(s).then(|| {
-        let c = converter(&s.negative);
-        let mut tables = Box::new(Tables::blank());
-        c.tables(&mut tables);
-        (c, tables)
-    });
+    let on = enabled(s).then(|| prepared(&s.negative));
     let (into, back) = (to_srgb().to_f32(), to_rec2020().to_f32());
     move |px| {
-        let Some((c, tables)) = &on else { return px };
+        let Some(p) = &on else { return px };
+        let (c, tables) = (&p.0, &p.1);
         let mul = |m: &[[f32; 3]; 3], v: [f32; 3]| m.map(|r| r[0] * v[0] + r[1] * v[1] + r[2] * v[2]);
         mul(&back, c.convert_with(tables, mul(&into, px).map(unit)))
     }
@@ -397,6 +424,40 @@ mod tests {
         assert_eq!(img.data, raw.data, "renders show the scan");
         assert!(!crate::lin_needs_cpu_stage(&crate::SourceInfo::default(), &s));
         assert!(s.negative.enabled, "the conversion is kept for switching the section on again");
+    }
+
+    /// A kept conversion converts exactly as one made new, and other settings get their own.
+    #[test]
+    fn a_kept_conversion_is_the_same_as_a_new_one() {
+        let raw = scan(60, 40);
+        let fresh = |n: &Negative| {
+            let c = converter(n);
+            let mut t = Box::new(Tables::blank());
+            c.tables(&mut t);
+            raw.data
+                .iter()
+                .map(|px| c.convert_with(&t, to_srgb().to_f32().map(|r| unit(r[0] * px[0] + r[1] * px[1] + r[2] * px[2]))))
+                .collect::<Vec<_>>()
+        };
+        let kept = |n: &Negative| {
+            let p = prepared(n);
+            raw.data
+                .iter()
+                .map(|px| p.0.convert_with(&p.1, to_srgb().to_f32().map(|r| unit(r[0] * px[0] + r[1] * px[1] + r[2] * px[2]))))
+                .collect::<Vec<_>>()
+        };
+        let a = Negative { enabled: true, ..Negative::default() };
+        let b = Negative { enabled: true, exposure: 0.7, ..Negative::default() };
+        for n in [&a, &b, &a, &b] {
+            assert_eq!(kept(n), fresh(n));
+        }
+        assert_ne!(kept(&a), kept(&b), "other settings, another conversion");
+        // more settings than are kept: the oldest go, each still converts as it should
+        for k in 0..PREPARED_KEPT + 3 {
+            let n = Negative { enabled: true, contrast: k as f64, ..Negative::default() };
+            assert_eq!(kept(&n), fresh(&n));
+        }
+        assert!(PREPARED.lock().unwrap().len() <= PREPARED_KEPT);
     }
 
     #[test]
