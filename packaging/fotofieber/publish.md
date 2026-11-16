@@ -94,6 +94,39 @@ Then follow the steps below.
 
 ## Log
 
+### 2026-11-16: v0.21.1-filmscan.7 published (first Windows and macOS builds)
+
+**Upstream**
+- Not checked again for this release. It was a packaging release on the same upstream v0.21.1 as `.6`, built the
+  same day.
+
+**New compared with v0.21.1-filmscan.6** (10 commits, all ours):
+- Zap! speed: the sample grid is measured in parallel (`5d51127a`), and a frame's crop is cut out once
+  (`9eb444c4`).
+- Windows x64 and macOS universal builds on GitHub (`4eeb1226`): `.github/workflows/fotofieber-build.yml` and
+  `fetch-builds.sh`. `LIGHTCRAFT_FILMSCAN=1` gives them their own settings folder, library and app id
+  (`crates/engine/src/flavor.rs`).
+- The programs are named like the Linux commands: `lightcraft-filmscan.exe`, `lightcraft-filmscan-cli.exe` and,
+  on macOS, `lightcraft-filmscan-cli` (`422e0741`, `e1751ec9`). The macOS app is `LightCraft Film Scan.app`.
+- README and release notes: Windows and macOS downloads with install steps, and "use at your own risk"
+  (`4d203ee3`, `aabe7e56`, `419ec87e`).
+- The macOS job runs on `macos-15-intel` (`e66969a9`).
+- Version `0.21.1+filmscan.7` (`de6a89c2`). All packages are built from `419ec87e`.
+
+**Testing**
+- `cargo xtask ci --quick` passed, apart from the known version test.
+- The user tried the Windows build: it works well.
+- Nobody has started the macOS app. On GitHub, only the command-line tool was started, on an Intel Mac. The README
+  and the notes say the macOS build is not tested by the maintainer.
+
+**What went wrong on the way**
+- The first push of the workflow file was refused: the gh token lacked the `workflow` scope. Fixed with
+  `gh auth refresh -h github.com -s workflow`.
+- `macos-15` (Apple silicon) got no runner twice: the job was cancelled after 15 minutes with "not acquired by
+  Runner". `macos-15-intel` got one at once. Its build takes about 50 minutes, against about 20 for Windows.
+- The ZIPs contain `README.md`. A README change after a build means building again: `publish.sh` refuses
+  packages whose source differs outside `packaging/fotofieber` and the workflow file.
+
 ### 2026-11-16: state before v0.21.1-filmscan.6
 
 **Upstream**
