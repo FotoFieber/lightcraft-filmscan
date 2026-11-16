@@ -17,7 +17,8 @@ concurrency:
 jobs:
   macos:
     name: macOS universal
-    runs-on: macos-15
+    # Intel: GitHub's Apple silicon runners were often unavailable; package.sh builds both architectures anyway.
+    runs-on: macos-15-intel
     timeout-minutes: 120
     env:
       CARGO_TERM_COLOR: always
