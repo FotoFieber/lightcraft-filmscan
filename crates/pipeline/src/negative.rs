@@ -223,7 +223,7 @@ pub fn scan_colour_mean(pixels: &[[f32; 3]]) -> [f64; 3] {
 pub fn measure(src: &Rgb32f, border: f64) -> Result<NegativeMeasurement, String> {
     check_border(border)?;
     let o = lightcraft_film::MeasureOptions { border: border as f32, ..Default::default() };
-    Ok(measured(&lightcraft_film::measure::measure(&srgb_pixels(src), src.width, src.height, &o)?))
+    Ok(measured(&lightcraft_film::measure::measure_samples(&scan_samples(src, &o, None)?, &o)?))
 }
 
 /// At most this many samples of each frame go into a roll's measurement, so every frame weighs
@@ -237,14 +237,8 @@ pub const ROLL_SAMPLES: usize = 250_000;
 pub fn sample(src: &Rgb32f, border: f64, base: Option<[f64; 3]>) -> Result<film::ValueHistogram, String> {
     check_border(border)?;
     let o = lightcraft_film::MeasureOptions { border: border as f32, max_samples: ROLL_SAMPLES, ..Default::default() };
-    let mut px = srgb_pixels(src);
-    if let Some(b) = base {
-        let k = b.map(|v| if v.is_finite() && v > 1e-4 { (1.0 / v) as f32 } else { 1.0 });
-        for p in &mut px {
-            *p = [p[0] * k[0], p[1] * k[1], p[2] * k[2]];
-        }
-    }
-    lightcraft_film::measure::sample(&px, src.width, src.height, &o)
+    let k = base.map(|b| b.map(|v| if v.is_finite() && v > 1e-4 { (1.0 / v) as f32 } else { 1.0 }));
+    scan_samples(src, &o, k)
 }
 
 /// The measurement of samples from [`sample`]: one frame's, or a roll's added together.
@@ -261,12 +255,57 @@ fn check_border(border: f64) -> Result<(), String> {
     Ok(())
 }
 
-/// `src`'s pixels in linear sRGB, the space the film model measures in, each channel kept to 0..1
-/// (not a number: 0).
-fn srgb_pixels(src: &Rgb32f) -> Vec<[f32; 3]> {
+/// A pixel of `src` (linear Rec.2020) in linear sRGB, the space the film model measures in, each
+/// channel kept to 0..1 (not a number: 0).
+fn srgb_pixel(m: &[[f32; 3]; 3], v: [f32; 3]) -> [f32; 3] {
+    m.map(|r| unit(r[0] * v[0] + r[1] * v[1] + r[2] * v[2]))
+}
+
+/// Rows of the sample grid one task of [`scan_samples`] reads.
+const SAMPLE_ROWS: usize = 16;
+
+/// [`lightcraft_film::measure::sample`] of `src` in linear sRGB, each pixel times `scale` when
+/// given: only the grid's pixels are taken to sRGB, and its rows are read in parallel parts whose
+/// histograms are added. The histogram counts, so it is the very one a single pass over all the
+/// pixels converted first gives.
+fn scan_samples(src: &Rgb32f, o: &lightcraft_film::MeasureOptions, scale: Option<[f32; 3]>) -> Result<film::ValueHistogram, String> {
     use rayon::prelude::*;
+    let (w, h) = (src.width, src.height);
+    if src.data.len() < w.saturating_mul(h) {
+        return Err("the image is smaller than its size says".into());
+    }
+    let g = lightcraft_film::measure::SampleGrid::of(w, h, o)?;
     let m = to_srgb().to_f32();
-    src.data.par_iter().map(|v| m.map(|r| unit(r[0] * v[0] + r[1] * v[1] + r[2] * v[2]))).collect()
+    let rows: Vec<usize> = g.rows().collect();
+    let hist = rows
+        .par_chunks(SAMPLE_ROWS)
+        // (each part on the heap: a histogram is 12 KiB, and a reduce keeps several on the stack)
+        .map(|ys| {
+            let mut part = Box::new(film::ValueHistogram::new());
+            for y in ys {
+                for x in g.cols() {
+                    let Some(v) = src.data.get(y * w + x) else { continue };
+                    let p = srgb_pixel(&m, *v);
+                    let p = match scale {
+                        Some(k) => [p[0] * k[0], p[1] * k[1], p[2] * k[2]],
+                        None => p,
+                    };
+                    part.push(film::Encoding::Srgb.encode3(p));
+                }
+            }
+            part
+        })
+        .reduce(
+            || Box::new(film::ValueHistogram::new()),
+            |mut a, b| {
+                a.add(&b);
+                a
+            },
+        );
+    if hist.count() == 0 {
+        return Err("no pixels to measure".into());
+    }
+    Ok(*hist)
 }
 
 fn measured(m: &lightcraft_film::Measurement) -> NegativeMeasurement {
@@ -458,6 +497,38 @@ mod tests {
             assert_eq!(kept(&n), fresh(&n));
         }
         assert!(PREPARED.lock().unwrap().len() <= PREPARED_KEPT);
+    }
+
+    /// The samples read from the grid alone, in parallel parts, are the very ones the film model
+    /// reads from every pixel converted first (with and without a film base to read relative to).
+    #[test]
+    fn grid_samples_are_the_ones_of_the_whole_scan_converted_first() {
+        let mut img = scan(997, 613);
+        img.data[5000] = [f32::NAN, f32::INFINITY, -3.0];
+        let m = to_srgb().to_f32();
+        let all: Vec<[f32; 3]> = img.data.iter().map(|v| srgb_pixel(&m, *v)).collect();
+        for (border, max_samples) in [(0.0, 1_000_000), (0.12, 1_000_000), (0.08, ROLL_SAMPLES), (0.0, 7_000)] {
+            let o = lightcraft_film::MeasureOptions { border, max_samples, ..Default::default() };
+            let want = lightcraft_film::measure::sample(&all, img.width, img.height, &o).unwrap();
+            let got = scan_samples(&img, &o, None).unwrap();
+            for (ch, q) in [(0, 0.001), (1, 0.5), (2, 0.997), (0, 0.999), (2, 0.003)] {
+                assert_eq!(got.quantile(ch, q), want.quantile(ch, q), "border {border}, {max_samples}");
+            }
+            assert_eq!(got.count(), want.count());
+            assert_eq!(
+                measured(&lightcraft_film::measure::measure_samples(&got, &o).unwrap()),
+                measured(&lightcraft_film::measure::measure_samples(&want, &o).unwrap())
+            );
+            let k = [1.0 / 0.6, 1.0 / 0.35, 1.0 / 0.15f32];
+            let scaled: Vec<[f32; 3]> = all.iter().map(|p| [p[0] * k[0], p[1] * k[1], p[2] * k[2]]).collect();
+            let want = lightcraft_film::measure::sample(&scaled, img.width, img.height, &o).unwrap();
+            let got = scan_samples(&img, &o, Some(k)).unwrap();
+            assert_eq!(
+                measured(&lightcraft_film::measure::measure_samples(&got, &o).unwrap()),
+                measured(&lightcraft_film::measure::measure_samples(&want, &o).unwrap())
+            );
+        }
+        assert!(scan_samples(&Rgb32f { width: 10, height: 10, data: vec![[0.5; 3]; 4] }, &Default::default(), None).is_err(), "short buffer");
     }
 
     #[test]

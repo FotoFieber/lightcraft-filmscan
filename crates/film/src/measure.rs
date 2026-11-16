@@ -58,26 +58,56 @@ pub fn measure(pixels: &[[f32; 3]], w: usize, h: usize, o: &MeasureOptions) -> R
     measure_samples(&sample(pixels, w, h, o)?, o)
 }
 
+/// The regular grid of pixels [`sample`] reads from a `w × h` scan: inside the border, every
+/// `step`-th row and column, at most about `o.max_samples` pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SampleGrid {
+    pub x0: usize,
+    pub x1: usize,
+    pub y0: usize,
+    pub y1: usize,
+    pub step: usize,
+}
+
+impl SampleGrid {
+    /// The grid for a `w × h` scan measured with `o`; an error when the border leaves no pixels.
+    pub fn of(w: usize, h: usize, o: &MeasureOptions) -> Result<Self, String> {
+        let border = if o.border.is_finite() { o.border.clamp(0.0, 0.45) } else { 0.0 };
+        let (bx, by) = ((w as f32 * border) as usize, (h as f32 * border) as usize);
+        let (x0, x1, y0, y1) = (bx, w.saturating_sub(bx), by, h.saturating_sub(by));
+        if x1 <= x0 || y1 <= y0 {
+            return Err("the border leaves no pixels to measure".into());
+        }
+        let area = (x1 - x0).saturating_mul(y1 - y0);
+        let step = (libm::ceil(libm::sqrt(area as f64 / o.max_samples.max(1) as f64)) as usize).max(1);
+        Ok(Self { x0, x1, y0, y1, step })
+    }
+
+    /// The rows read, in order.
+    pub fn rows(&self) -> impl Iterator<Item = usize> + Clone {
+        (self.y0..self.y1).step_by(self.step)
+    }
+
+    /// The columns read on each row, in order.
+    pub fn cols(&self) -> impl Iterator<Item = usize> + Clone {
+        (self.x0..self.x1).step_by(self.step)
+    }
+}
+
 /// The samples [`measure`] reads from a `w × h` scan: the pixels inside the border, on a grid of
-/// at most `o.max_samples`. Several scans' samples added together ([`ValueHistogram::add`]) measure
-/// as one, as a lab measures a roll.
+/// at most `o.max_samples` ([`SampleGrid`]). Several scans' samples added together
+/// ([`ValueHistogram::add`]) measure as one, as a lab measures a roll. A host may read the grid
+/// itself, in parts added together: the histogram counts, so the order doesn't matter.
 pub fn sample(pixels: &[[f32; 3]], w: usize, h: usize, o: &MeasureOptions) -> Result<ValueHistogram, String> {
     if pixels.len() < w.saturating_mul(h) {
         return Err("the image is smaller than its size says".into());
     }
-    let border = if o.border.is_finite() { o.border.clamp(0.0, 0.45) } else { 0.0 };
-    let (bx, by) = ((w as f32 * border) as usize, (h as f32 * border) as usize);
-    let (x0, x1, y0, y1) = (bx, w.saturating_sub(bx), by, h.saturating_sub(by));
-    if x1 <= x0 || y1 <= y0 {
-        return Err("the border leaves no pixels to measure".into());
-    }
-    let area = (x1 - x0).saturating_mul(y1 - y0);
-    let step = (libm::ceil(libm::sqrt(area as f64 / o.max_samples.max(1) as f64)) as usize).max(1);
+    let g = SampleGrid::of(w, h, o)?;
     // The histogram is binned on the sRGB-encoded values, which spread the dense end (the
     // highlights, near 0 in linear light) over many more bins than a linear scale would.
     let mut hist = ValueHistogram::new();
-    for y in (y0..y1).step_by(step) {
-        for x in (x0..x1).step_by(step) {
+    for y in g.rows() {
+        for x in g.cols() {
             if let Some(p) = pixels.get(y * w + x) {
                 hist.push(Encoding::Srgb.encode3(*p));
             }
