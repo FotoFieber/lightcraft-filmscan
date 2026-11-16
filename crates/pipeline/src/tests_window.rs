@@ -567,3 +567,22 @@ fn diagnostic_overlays_in_a_window_match_the_full_render() {
     hdr.light.exposure = 1.5;
     check_overlay("hdr range", &hdr, Overlay::HdrRange, MID, 1, 0.1);
 }
+
+// Given the joint colour NR's noise model measured on many tiles, then measuring them side by side
+// gives the very model one thread gives: a render (of a negative too) is the same to the bit
+#[test]
+fn the_noise_model_tiles_side_by_side_measure_as_one_after_another() {
+    let (w, h, win) = (1664, 1536, PixelWindow { x: 1400, y: 700, w: 128, h: 128 });
+    let src = crate::tests::colour_noise_scene(w, h, w * 2 / 3);
+    let mut s = DevelopSettings::default();
+    s.detail.nr_color = 25.0;
+    s.detail.nr_color_smoothness = 0.0;
+    let one_thread = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+    for negative in [false, true] {
+        s.negative.enabled = negative;
+        let req = RenderRequest { window: Some(win), ..RenderRequest::fit(w, h) };
+        let parallel = render(&src, &SourceInfo::default(), &s, &req).image;
+        let serial = one_thread.install(|| render(&src, &SourceInfo::default(), &s, &req).image);
+        assert_eq!(parallel, serial, "negative {negative}");
+    }
+}

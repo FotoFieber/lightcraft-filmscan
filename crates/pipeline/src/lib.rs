@@ -584,8 +584,10 @@ pub fn colour_noise(src: &Rgb32f, info: &SourceInfo, p: &Plan<'_>) -> Option<nrc
     let (lum, _) = local::nr_params(s, p.detail_scale);
     // the source oriented and prefiltered once for all tiles
     let sampled = full.sample_windows(src, *fw, *fh, &windows);
+    // the tiles side by side (each one alone, in its order: the same model as one after another)
+    use rayon::prelude::*;
     let tiles: Vec<Rgb32f> = windows
-        .into_iter()
+        .into_par_iter()
         .zip(sampled)
         .map(|(t, mut img)| {
             let frame = if (t.w, t.h) == (*fw, *fh) { full.clone() } else { full.window(*fw, *fh, t) };
