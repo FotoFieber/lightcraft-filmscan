@@ -73,11 +73,16 @@ Then follow the steps below.
    - `cargo xtask ci`. The one expected failure is `xtask version::tests::the_real_manifest_has_a_valid_version`.
    - `cargo test -p lightcraft-gpu --test it gpu_matches_cpu`.
    - The Zap! check on real scans (`zap_on_real_scans`, ignored by default).
-5. Build: `packaging/fotofieber/build-deb.sh`.
+5. Build: `packaging/fotofieber/build-deb.sh`. For macOS and Windows, push the branch to `fotofieber` (with the
+   user's OK) and run `packaging/fotofieber/fetch-builds.sh`. It starts `.github/workflows/fotofieber-build.yml`
+   on GitHub's macOS and Windows machines, waits about 30–60 minutes, and downloads the ZIPs to `dist/fotofieber/`.
+   The builds are unsigned: an Apple Developer ID or a Windows code-signing certificate costs money and is the
+   user's decision. Film Scan builds of these two get their own settings folder, library and app id through
+   `LIGHTCRAFT_FILMSCAN=1` (`crates/engine/src/flavor.rs`), because they have no launcher script.
 6. Optionally, take screenshots: `screenshots.sh`.
 7. Write the notes with `release-notes.sh <tag> > dist/fotofieber/notes.md`. Credit every source by hand: upstream, @smyrgeorge, the review helpers, us, and ideas from #3623. Add a sentence for users.
 8. **Get the user's OK**, including on the screenshots.
-9. Run `git fetch fotofieber`, then `publish.sh <tag>`.
+9. Run `git fetch fotofieber`, then `publish.sh <tag>`. It attaches the macOS and Windows ZIPs when they were built from the same source as the .deb.
 
 ### When to stop
 

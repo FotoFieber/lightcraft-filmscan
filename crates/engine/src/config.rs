@@ -49,6 +49,16 @@ pub fn config_dir() -> Option<PathBuf> {
 
 /// `portable` is asked only without an override, so an isolated run never probes beside the executable.
 fn config_dir_with(platform: Platform, env: impl Fn(&str) -> Option<OsString>, portable: impl FnOnce() -> Option<PathBuf>) -> Option<PathBuf> {
+    config_dir_as(&crate::flavor::NAMES, platform, env, portable)
+}
+
+/// [`config_dir_with`] for a build with `names` (the official LightCraft or LightCraft Film Scan).
+fn config_dir_as(
+    names: &crate::flavor::Names,
+    platform: Platform,
+    env: impl Fn(&str) -> Option<OsString>,
+    portable: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
     if let Some(dir) = env("LIGHTCRAFT_CONFIG_DIR") {
         return (!dir.is_empty()).then(|| PathBuf::from(dir));
     }
@@ -56,11 +66,12 @@ fn config_dir_with(platform: Platform, env: impl Fn(&str) -> Option<OsString>, p
         return Some(dir);
     }
     match platform {
-        Platform::Mac => env("HOME").map(|h| PathBuf::from(h).join("Library/Application Support/LightCraft")),
-        Platform::Windows => env("APPDATA").map(|a| PathBuf::from(a).join("LightCraft")),
-        Platform::Other => {
-            env("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".config"))).map(|c| c.join("lightcraft"))
-        }
+        Platform::Mac => env("HOME").map(|h| PathBuf::from(h).join("Library/Application Support").join(names.settings)),
+        Platform::Windows => env("APPDATA").map(|a| PathBuf::from(a).join(names.settings)),
+        Platform::Other => env("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env("HOME").map(|h| PathBuf::from(h).join(".config")))
+            .map(|c| c.join(names.settings_xdg)),
     }
 }
 
@@ -184,7 +195,12 @@ mod config_tests {
     use super::*;
 
     fn resolve(platform: Platform, vars: &[(&str, &str)]) -> Option<PathBuf> {
-        config_dir_with(platform, |name| vars.iter().find_map(|(key, value)| (*key == name).then(|| OsString::from(value))), || None)
+        config_dir_as(
+            &crate::flavor::STANDARD,
+            platform,
+            |name| vars.iter().find_map(|(key, value)| (*key == name).then(|| OsString::from(value))),
+            || None,
+        )
     }
 
     /// An override is used as is: portable mode is not even looked for.
@@ -271,6 +287,23 @@ mod config_tests {
         for platform in [Platform::Mac, Platform::Windows, Platform::Other] {
             assert_eq!(resolve(platform, &[]), None);
         }
+    }
+
+    /// A Film Scan build keeps its settings apart from the official LightCraft's, unless told otherwise.
+    #[test]
+    fn film_scan_has_its_own_settings_folder() {
+        use crate::flavor::{FILM_SCAN, STANDARD};
+        let vars = [("HOME", "/user"), ("APPDATA", "/roaming"), ("XDG_CONFIG_HOME", "/xdg")];
+        let get = |name: &str| vars.iter().find_map(|(key, value)| (*key == name).then(|| OsString::from(value)));
+        let film = |platform| config_dir_as(&FILM_SCAN, platform, get, || None);
+        assert_eq!(film(Platform::Mac), Some(PathBuf::from("/user/Library/Application Support/LightCraft Film Scan")));
+        assert_eq!(film(Platform::Windows), Some(PathBuf::from("/roaming/LightCraft Film Scan")));
+        assert_eq!(film(Platform::Other), Some(PathBuf::from("/xdg/lightcraft-filmscan")));
+        let standard = config_dir_as(&STANDARD, Platform::Windows, get, || None);
+        assert_eq!(standard, Some(PathBuf::from("/roaming/LightCraft")));
+        let overridden =
+            config_dir_as(&FILM_SCAN, Platform::Windows, |name| (name == "LIGHTCRAFT_CONFIG_DIR").then(|| OsString::from("own")), || None);
+        assert_eq!(overridden, Some(PathBuf::from("own")));
     }
 
     #[cfg(unix)]

@@ -33,8 +33,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{EngineError, LibrarySource, Result, Selection, Session};
 
-/// Library directory name inside the user's Pictures folder.
-pub const DEFAULT_NAME: &str = "LightCraft Library";
+/// Library directory name inside the user's Pictures folder (LightCraft Film Scan has its own, see
+/// [`crate::flavor`]).
+pub const DEFAULT_NAME: &str = crate::flavor::NAMES.library;
 
 /// The library folder `path` names. A library is a folder; naming one of its own files
 /// (`catalog.snap`, `catalog.log`, `catalog.lock`) means the folder that holds it. Any other

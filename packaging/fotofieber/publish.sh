@@ -3,13 +3,15 @@
 # FotoFieber/lightcraft-filmscan.
 #
 #   packaging/fotofieber/build-deb.sh
+#   packaging/fotofieber/fetch-builds.sh           # optional: macOS and Windows, built on GitHub
 #   packaging/fotofieber/screenshots.sh            # optional; check the images before publishing
 #   packaging/fotofieber/release-notes.sh v0.21.1 > dist/fotofieber/notes.md   # read it
 #   packaging/fotofieber/publish.sh v0.21.1
 #
 # Tags HEAD as <upstream-tag>-filmscan, pushes this branch and the tag to the remote `fotofieber`,
-# and creates the release with the .deb, SHA256SUMS.txt, one diff against the upstream tag, the
-# patch series and the screenshots. GitHub adds the source archives of the tag itself.
+# and creates the release with the .deb, the macOS and Windows ZIPs when fetch-builds.sh got them,
+# SHA256SUMS.txt, one diff against the upstream tag, the patch series and the screenshots. GitHub
+# adds the source archives of the tag itself.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE="${1:?usage: publish.sh <upstream-tag>}"
@@ -29,7 +31,7 @@ BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD)"
 (cd "$OUT" && sha256sum -c SHA256SUMS.txt)
 # The .deb must be built from the source being tagged: only this release tooling may differ.
 built="$(cat "$OUT/BUILT_FROM" 2>/dev/null || true)"
-if [[ -z "$built" ]] || ! git -C "$ROOT" diff --quiet "$built" HEAD -- . ':(exclude)packaging/fotofieber'; then
+if [[ -z "$built" ]] || ! git -C "$ROOT" diff --quiet "$built" HEAD -- . ':(exclude)packaging/fotofieber' ':(exclude).github/workflows/fotofieber-build.yml'; then
   echo "error: $DEB was not built from this source (built from '${built:-?}'); rebuild" >&2
   exit 1
 fi
@@ -38,6 +40,23 @@ if git -C "$ROOT" log --format='%ae%n%ce' "$BASE..HEAD" | grep -q '@fotofieber.c
    git -C "$ROOT" log --format='%ae%n%ce' "$BASE..HEAD" | grep '@fotofieber.ch' | grep -qv '^lightcraft@fotofieber.ch$'; then
   echo "error: a commit in $BASE..HEAD has a fotofieber.ch address other than lightcraft@" >&2
   exit 1
+fi
+
+# macOS and Windows builds from GitHub (fetch-builds.sh): only this version's, and only when built
+# from the same source as the .deb. They join SHA256SUMS.txt.
+others=()
+for os in macos windows; do
+  files=("$OUT"/lightcraft-filmscan-*"$VERSION"-"$os"-*.zip)
+  [[ -e "${files[0]}" ]] || continue
+  from="$(cat "$OUT/BUILT_FROM-$os" 2>/dev/null || true)"
+  if [[ -z "$from" ]] || ! git -C "$ROOT" diff --quiet "$from" HEAD -- . ':(exclude)packaging/fotofieber' ':(exclude).github/workflows/fotofieber-build.yml'; then
+    echo "error: the $os build was not built from this source (built from '${from:-?}'); run fetch-builds.sh" >&2
+    exit 1
+  fi
+  others+=("${files[@]}")
+done
+if [[ ${#others[@]} -gt 0 ]]; then
+  (cd "$OUT" && sha256sum "$(basename "$DEB")" "${others[@]##*/}" >SHA256SUMS.txt)
 fi
 
 PATCHES="$OUT/lightcraft-filmscan-patches-$BASE.tar.gz"
@@ -54,7 +73,7 @@ git -C "$ROOT" -c credential.helper= -c credential.helper='!gh auth git-credenti
 # The repository's front page shows this branch (and its README), not the copy of upstream's main.
 gh repo edit "$FORK" --default-branch "$BRANCH" --enable-issues
 
-assets=("$DEB" "$OUT/SHA256SUMS.txt" "$DIFF" "$PATCHES")
+assets=("$DEB" ${others[@]+"${others[@]}"} "$OUT/SHA256SUMS.txt" "$DIFF" "$PATCHES")
 if compgen -G "$OUT/screenshots/*.png" >/dev/null; then assets+=("$OUT"/screenshots/*.png); fi
 gh release create "$TAG" --repo "$FORK" --verify-tag --latest \
   --title "LightCraft Film Scan $VERSION (LightCraft $BASE + Convert Negative)" --notes-file "$NOTES" "${assets[@]}"

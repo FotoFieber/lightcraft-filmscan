@@ -70,8 +70,9 @@ use prefs::{PrefsWriter, as_remembered, load_prefs, prefs_path};
 use prefs::{load_prefs_at, write_atomic};
 use session::{open_session, services};
 
-/// Reverse-DNS app id: Wayland app id, `.desktop` file and hicolor icon name.
-const APP_ID: &str = "ai.storyteller.lightcraft";
+/// Reverse-DNS app id: Wayland app id, `.desktop` file and hicolor icon name. LightCraft Film Scan
+/// builds have their own (`lightcraft_engine::flavor`).
+const APP_ID: &str = lightcraft_engine::flavor::NAMES.app_id;
 
 /// The app id this run uses: `$LIGHTCRAFT_APP_ID` when it is a plausible reverse-DNS id, else
 /// [`APP_ID`]. LightCraft Film Scan's launcher sets its own, so its windows belong to its own

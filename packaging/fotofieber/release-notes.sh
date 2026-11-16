@@ -82,6 +82,22 @@ if [[ -n "$since" ]]; then
   since_block="## What's new since $prev"$'\n\n'"$since"$'\n'
 fi
 
+# macOS and Windows builds, when fetch-builds.sh downloaded them for this version.
+other_rows=""
+other_install=""
+if [[ -f "$ROOT/dist/fotofieber/lightcraft-filmscan-$VERSION-macos-universal.zip" ]]; then
+  other_rows+="| \`lightcraft-filmscan-$VERSION-macos-universal.zip\` | macOS 11 or newer, Apple silicon and Intel: **LightCraft Film Scan.app** |"$'\n'
+  other_rows+="| \`lightcraft-filmscan-cli-$VERSION-macos-universal.zip\` | the command-line tool for macOS |"$'\n'
+  other_install+="**macOS:** unzip, drag **LightCraft Film Scan** to Applications. The app is not signed by Apple, so macOS refuses the first start: open System Settings ▸ Privacy & Security and click **Open Anyway** (or run \`xattr -dr com.apple.quarantine \"/Applications/LightCraft Film Scan.app\"\`). Settings: \`~/Library/Application Support/LightCraft Film Scan\`."$'\n\n'
+fi
+if [[ -f "$ROOT/dist/fotofieber/lightcraft-filmscan-$VERSION-windows-x64.zip" ]]; then
+  other_rows+="| \`lightcraft-filmscan-$VERSION-windows-x64.zip\` | Windows 10 and 11 on x64: a folder to unzip anywhere, no installer |"$'\n'
+  other_install+="**Windows:** unzip and start \`lightcraft.exe\` in the folder **LightCraft Film Scan**. It is not signed, so SmartScreen asks first: **More info ▸ Run anyway**. Settings: \`%APPDATA%\\LightCraft Film Scan\`."$'\n\n'
+fi
+if [[ -n "$other_install" ]]; then
+  other_install+="The macOS and Windows builds come from GitHub Actions (\`.github/workflows/fotofieber-build.yml\`) and are tested there only by starting the command-line tool. Please report what works and what doesn't."$'\n\n'
+fi
+
 shots=""
 if compgen -G "$ROOT/dist/fotofieber/screenshots/*.png" >/dev/null; then
   for f in "$ROOT"/dist/fotofieber/screenshots/*.png; do
@@ -117,7 +133,7 @@ ${since_block}## Download
 | File | For |
 |---|---|
 | \`lightcraft-filmscan-$VERSION-linux-x86_64.deb\` | Debian, Ubuntu, Linux Mint, Zorin OS, Pop!_OS, ... on x86_64 with glibc ≥ 2.35 (Ubuntu 22.04 / Debian 12 or newer) |
-| \`SHA256SUMS.txt\` | checksum of the .deb |
+${other_rows}| \`SHA256SUMS.txt\` | checksums of the packages |
 | \`lightcraft-filmscan-$VERSION-vs-$BASE.diff\` | the whole difference to LightCraft $BASE as one unified diff (\`git apply\` on a $BASE checkout) |
 | \`lightcraft-filmscan-patches-$BASE.tar.gz\` | the same changes commit by commit, as \`git format-patch\` files |
 | Source code (zip / tar.gz) | the full source of this build, tag \`$TAG\` |
@@ -129,6 +145,7 @@ official LightCraft never opens photos with film settings it doesn't know. \`LIG
 \`LIGHTCRAFT_LIBRARY\` choose other folders.
 Built on Ubuntu 22.04 with Rust, HEIC/HEIF support and the craft-fonts CJK faces, like the official packages.
 
+${other_install}
 ${shots:+## Screenshots
 
 $shots}## Where the differences come from
