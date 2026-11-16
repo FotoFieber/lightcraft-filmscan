@@ -159,13 +159,6 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
     if o.film == Film::Slide {
         return slide(before, found, dims, o, (ow, oh));
     }
-    // a roll's frames keep what their measurement read, to be measured together
-    let samples = |g: CropGeometry, border: f64, base: Option<[f64; 3]>| -> Result<Option<Box<RollSamples>>, String> {
-        if !o.roll {
-            return Ok(None);
-        }
-        Ok(Some(Box::new(RollSamples { samples: sample_in(scan, before, g, border, base)?, base })))
-    };
     // the picture as the crop shows it: in the frame turned by the frame's angle
     let picture_of = |f: &Frame| CropGeometry { rect: picture(f), angle: f.angle };
     if own_crop(before) {
@@ -174,17 +167,34 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
             Ok(f) => (picture_of(f), 0.0, Some(f)),
             Err(_) => (geometry, OWN_CROP_BORDER, None),
         };
-        let settings = converted(before, o.film, measure_in(scan, before, g, border)?, frame.and_then(|f| f.base));
-        let samples = samples(g, border, frame.and_then(|f| f.base))?;
+        let base = frame.and_then(|f| f.base);
+        let (measured, samples) = measure_and_sample(scan, before, g, border, base, o.roll)?;
+        let settings = converted(before, o.film, measured, base);
         return Ok(Zapped { settings, report: report(&geometry, frame, true), samples });
     }
     let frame = found?;
     let geometry = crop_of(&frame, dims, o, (ow, oh))?;
-    let measured = measure_in(scan, before, picture_of(&frame), 0.0)?;
+    let (measured, samples) = measure_and_sample(scan, before, picture_of(&frame), 0.0, frame.base, o.roll)?;
     let mut settings = converted(before, o.film, measured, frame.base);
     settings.crop.geometry = geometry;
     settings.negative.zap_crop = Some(geometry);
-    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples: samples(picture_of(&frame), 0.0, frame.base)? })
+    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples })
+}
+
+/// [`measure_in`] and, for a roll's frame (`roll`), the samples a roll's measurement reads there
+/// relative to `base` ([`RollSamples`]): the crop's pixels are cut out once for both.
+fn measure_and_sample(
+    scan: &Rgb32f,
+    d: &DevelopSettings,
+    g: CropGeometry,
+    border: f64,
+    base: Option<[f64; 3]>,
+    roll: bool,
+) -> Result<(NegativeMeasurement, Option<Box<RollSamples>>), String> {
+    let px = framed(scan, d, g);
+    let measured = lightcraft_pipeline::negative::measure(&px, border)?;
+    let samples = if roll { Some(Box::new(RollSamples { samples: lightcraft_pipeline::negative::sample(&px, border, base)?, base })) } else { None };
+    Ok((measured, samples))
 }
 
 /// The crop Zap! sets for `frame` on a scan of oriented size `dims` (analysed at `analysed`).
@@ -261,11 +271,6 @@ fn report(geometry: &CropGeometry, frame: Option<&Frame>, kept: bool) -> Value {
 /// both measure here, so a turned crop reads the same pixels either way.
 pub fn measure_in(scan: &Rgb32f, d: &DevelopSettings, g: CropGeometry, border: f64) -> Result<NegativeMeasurement, String> {
     lightcraft_pipeline::negative::measure(&framed(scan, d, g), border)
-}
-
-/// The samples [`measure_in`] reads, at most a roll frame's share, relative to `base`.
-fn sample_in(scan: &Rgb32f, d: &DevelopSettings, g: CropGeometry, border: f64, base: Option<[f64; 3]>) -> Result<ValueHistogram, String> {
-    lightcraft_pipeline::negative::sample(&framed(scan, d, g), border, base)
 }
 
 /// The pixels of `scan` inside the crop `g` of a photo with settings `d`. A turned crop is not a
@@ -409,9 +414,10 @@ pub fn remeasure(scan: &Rgb32f, z: &mut Zapped, own: Rect) -> Result<(), String>
         return Err("the roll's crop reaches onto blank film".into());
     }
     let g = z.settings.crop.geometry;
-    let measured = measure_in(scan, &z.settings, g, 0.0)?;
+    let px = framed(scan, &z.settings, g);
+    let measured = lightcraft_pipeline::negative::measure(&px, 0.0)?;
     if let Some(r) = z.samples.as_deref_mut() {
-        r.samples = sample_in(scan, &z.settings, g, 0.0, r.base)?;
+        r.samples = lightcraft_pipeline::negative::sample(&px, 0.0, r.base)?;
     }
     z.settings.negative.measured = Some(measured);
     Ok(())
