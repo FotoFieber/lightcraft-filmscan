@@ -8,7 +8,7 @@
     pwsh packaging/fotofieber/build-windows.ps1
 
   Output in dist\fotofieber\: lightcraft-filmscan-<version>-windows-x64.zip, a folder
-  "LightCraft Film Scan" with lightcraft.exe, lightcraft-cli.exe and the licences.
+  "LightCraft Film Scan" with lightcraft-filmscan.exe, lightcraft-filmscan-cli.exe and the licences.
 
   There is no MSI on purpose: upstream's installer (packaging/windows/lightcraft.wxs) has the
   official LightCraft's upgrade code, registry keys and folder, so it would replace an installed
@@ -53,7 +53,9 @@ $Stage = Join-Path $TargetDir 'fotofieber-windows'
 $Folder = Join-Path $Stage 'LightCraft Film Scan'
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Folder, $Out | Out-Null
-Copy-Item (Join-Path $Bin 'lightcraft.exe'), (Join-Path $Bin 'lightcraft-cli.exe') $Folder
+# The same names as the Linux commands, so they are not mistaken for an official LightCraft.
+Copy-Item (Join-Path $Bin 'lightcraft.exe') (Join-Path $Folder 'lightcraft-filmscan.exe')
+Copy-Item (Join-Path $Bin 'lightcraft-cli.exe') (Join-Path $Folder 'lightcraft-filmscan-cli.exe')
 foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Folder }
@@ -65,9 +67,9 @@ Get-ChildItem -Path (Join-Path $env:CRAFT_FONTS_DIR 'fonts\*\OFL.txt') -ErrorAct
 }
 
 # Smoke test: the command-line tool runs and renders the demo library with the embedded fonts.
-Invoke-Native 'lightcraft-cli --version' { & (Join-Path $Folder 'lightcraft-cli.exe') --version }
+Invoke-Native 'lightcraft-filmscan-cli --version' { & (Join-Path $Folder 'lightcraft-filmscan-cli.exe') --version }
 $Snapshot = Join-Path $Stage 'smoke.png'
-Invoke-Native 'lightcraft-cli snapshot --demo' { & (Join-Path $Folder 'lightcraft-cli.exe') snapshot --demo -o $Snapshot --size 1280x800 }
+Invoke-Native 'lightcraft-filmscan-cli snapshot --demo' { & (Join-Path $Folder 'lightcraft-filmscan-cli.exe') snapshot --demo -o $Snapshot --size 1280x800 }
 if (-not (Test-Path $Snapshot) -or (Get-Item $Snapshot).Length -lt 10000) { throw 'the demo snapshot was not written' }
 
 $Zip = Join-Path $Out "lightcraft-filmscan-$Version-windows-x64.zip"

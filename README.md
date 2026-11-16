@@ -625,7 +625,7 @@ the LightCraft version it is based on. Windows and macOS builds are there from 0
 | File | For |
 |---|---|
 | `lightcraft-filmscan-<ver>-linux-x86_64.deb` | Debian 12+, Ubuntu 22.04+, Linux Mint 21+, Zorin OS 17+, Pop!_OS and other Debian-based distributions on x86_64 (glibc 2.35 or newer) |
-| `lightcraft-filmscan-<ver>-windows-x64.zip` | Windows 10 and 11 on x64: a folder to unzip anywhere, no installer (untested) |
+| `lightcraft-filmscan-<ver>-windows-x64.zip` | Windows 10 and 11 on x64: a folder to unzip anywhere, no installer, with `lightcraft-filmscan.exe` and `lightcraft-filmscan-cli.exe` (untested) |
 | `lightcraft-filmscan-<ver>-macos-universal.zip` | macOS 11 or newer, Apple silicon and Intel: **LightCraft Film Scan.app** (untested) |
 | `lightcraft-filmscan-cli-<ver>-macos-universal.zip` | the command-line tool for macOS (untested) |
 | `SHA256SUMS.txt` | the checksums of the packages |
@@ -640,7 +640,7 @@ LightCraft: the menu entry is **LightCraft Film Scan**, the commands are `lightc
 doesn't know. `LIGHTCRAFT_CONFIG_DIR` and `LIGHTCRAFT_LIBRARY` choose other folders. Help ▸ Check for Updates
 reports official releases.
 
-**Windows:** unzip and start `lightcraft.exe` in the folder **LightCraft Film Scan**. It is not signed, so
+**Windows:** unzip and start `lightcraft-filmscan.exe` in the folder **LightCraft Film Scan**. It is not signed, so
 SmartScreen asks first: **More info ▸ Run anyway**. Settings: `%APPDATA%\LightCraft Film Scan`; library:
 `LightCraft Film Scan Library` in your Pictures folder.
 
