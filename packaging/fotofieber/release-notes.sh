@@ -87,7 +87,7 @@ other_rows=""
 other_install=""
 if [[ -f "$ROOT/dist/fotofieber/lightcraft-filmscan-$VERSION-macos-universal.zip" ]]; then
   other_rows+="| \`lightcraft-filmscan-$VERSION-macos-universal.zip\` | macOS 11 or newer, Apple silicon and Intel: **LightCraft Film Scan.app** |"$'\n'
-  other_rows+="| \`lightcraft-filmscan-cli-$VERSION-macos-universal.zip\` | the command-line tool for macOS |"$'\n'
+  other_rows+="| \`lightcraft-filmscan-cli-$VERSION-macos-universal.zip\` | the command-line tool for macOS, \`lightcraft-filmscan-cli\` |"$'\n'
   other_install+="**macOS:** unzip, drag **LightCraft Film Scan** to Applications. The app is not signed by Apple, so macOS refuses the first start: open System Settings ▸ Privacy & Security and click **Open Anyway** (or run \`xattr -dr com.apple.quarantine \"/Applications/LightCraft Film Scan.app\"\`). Settings: \`~/Library/Application Support/LightCraft Film Scan\`."$'\n\n'
 fi
 if [[ -f "$ROOT/dist/fotofieber/lightcraft-filmscan-$VERSION-windows-x64.zip" ]]; then
