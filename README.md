@@ -14,8 +14,8 @@
 >   [releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases); each release names the upstream version it
 >   is based on and lists every change, commit by commit. See [Downloads](#downloads).
 > - **Use at your own risk.** This is an unofficial playground build, without any warranty (see the licences).
->   The Windows and macOS builds are made on GitHub's machines, are not signed and are not tested by the
->   maintainer: only built and started there. Keep backups of your photos.
+>   The Windows and macOS builds are made on GitHub's machines and are not signed. The maintainer has tried
+>   the Windows build; the macOS build is not tested by the maintainer. Keep backups of your photos.
 > - **Where the changes come from:** Convert Negative part 1/4 is upstream
 >   ([#2490](https://github.com/storytold/lightcraft/pull/2490)); parts 2–4 are the open upstream pull requests
 >   [#3985](https://github.com/storytold/lightcraft/pull/3985), [#3986](https://github.com/storytold/lightcraft/pull/3986)
@@ -613,9 +613,10 @@ the roll mode in this build go to [its issues](https://github.com/FotoFieber/lig
 
 > [!WARNING]
 > **Use at your own risk.** LightCraft Film Scan is an unofficial playground build and comes without any warranty
-> (see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE)). The **Windows and macOS builds are not
-> tested by the maintainer**: GitHub Actions builds them, checks that the command-line tool starts and renders the
-> demo library, and nothing more. They are not signed. Keep backups of your photos, and please
+> (see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE)). GitHub Actions builds the Windows and
+> macOS versions and checks that the command-line tool starts and renders the demo library. They are not signed.
+> The maintainer has tried the **Windows** build; the **macOS build is not tested by the maintainer**. Keep backups
+> of your photos, and please
 > [report](https://github.com/FotoFieber/lightcraft-filmscan/issues) what works and what doesn't.
 
 LightCraft Film Scan is on the [releases page](https://github.com/FotoFieber/lightcraft-filmscan/releases) (the
@@ -625,7 +626,7 @@ the LightCraft version it is based on. Windows and macOS builds are there from 0
 | File | For |
 |---|---|
 | `lightcraft-filmscan-<ver>-linux-x86_64.deb` | Debian 12+, Ubuntu 22.04+, Linux Mint 21+, Zorin OS 17+, Pop!_OS and other Debian-based distributions on x86_64 (glibc 2.35 or newer) |
-| `lightcraft-filmscan-<ver>-windows-x64.zip` | Windows 10 and 11 on x64: a folder to unzip anywhere, no installer, with `lightcraft-filmscan.exe` and `lightcraft-filmscan-cli.exe` (untested) |
+| `lightcraft-filmscan-<ver>-windows-x64.zip` | Windows 10 and 11 on x64: a folder to unzip anywhere, no installer, with `lightcraft-filmscan.exe` and `lightcraft-filmscan-cli.exe` |
 | `lightcraft-filmscan-<ver>-macos-universal.zip` | macOS 11 or newer, Apple silicon and Intel: **LightCraft Film Scan.app** (untested) |
 | `lightcraft-filmscan-cli-<ver>-macos-universal.zip` | the command-line tool for macOS, `lightcraft-filmscan-cli` (untested) |
 | `SHA256SUMS.txt` | the checksums of the packages |
