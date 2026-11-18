@@ -121,6 +121,26 @@ then `gh release edit <tag> -R FotoFieber/lightcraft-filmscan --notes-file dist/
 
 ## Log
 
+### 2026-11-18: v0.21.1-filmscan.8 published (upstream main + rustls fix)
+
+**What**
+- Base: upstream v0.21.1 + `main` at `27b755a9` (146 commits, untagged), see the merge entry below.
+- Ours since `.7`: the rustls-rustcrypto bump (`001f4778`), package README (`62a29f90`), release notes that summarise
+  upstream `main` in one line (`6a6315d2`).
+- All four packages were built from `6a6315d2`: the .deb locally, Windows and macOS on GitHub (run 44254737667).
+  macOS took ~90 minutes on the Intel runner (`.7`: 53); Windows ~28.
+- Notes: a hand-written sentence for users under "What's new", and the `.6` screenshots reused.
+
+**Testing**
+- The user tried the Windows ZIP (the same file that was published, sha256 `d4352203…`): it works.
+- The .deb's CLI renders the demo library. macOS is not tested by the maintainer, as the notes say.
+- `publish.sh --check` passed. The published `SHA256SUMS.txt` matches the local one.
+
+**Notes for next time**
+- The release title from `publish.sh` still says "LightCraft v0.21.1 + Convert Negative". The notes say "+ main".
+- The Windows test ZIP was put on the VM's share (`dist/windows-test`, drive `Z:` in `win11`). It was removed after
+  the release.
+
 ### 2026-11-18: merged upstream main, rustls-rustcrypto bump (no release)
 
 **What**
