@@ -121,6 +121,34 @@ then `gh release edit <tag> -R FotoFieber/lightcraft-filmscan --notes-file dist/
 
 ## Log
 
+### 2026-11-18: merged upstream main, rustls-rustcrypto bump (no release)
+
+**What**
+- Merged `origin/main` at `27b755a9` (239 commits past v0.21.1, untagged). Conflicts: `Cargo.lock` (theirs, then
+  `cargo update -w`) and `crates/engine/src/tests.rs` (kept `mod negative;` and upstream's `mod opened_folder;`).
+- `001f4778`: `rustls-rustcrypto` 0.0.2-alpha → 0.1.0-pre.0 and `webpki-roots` 1.0.12. This drops `rustls-webpki
+  0.102.8` and `crypto-bigint 0.5` (the 4 rustls-webpki Dependabot alerts; RUSTSEC-2026-0387, upstream #2568). It
+  needs no code change. Taken from upstream's Dependabot PR #4381, whose gate fails on `harfrust` 0.16, not on this.
+- Not taken: candle 0.11.1. It would clear the zip alerts, but upstream pins `=0.9.2` on purpose (later releases pull
+  Oniguruma, a C library). zip doesn't reach us.
+- `webpki-roots` is CDLA-Permissive-2.0, which is not in the house allowlist. That's unchanged since 1.0.10;
+  it's upstream's to decide.
+- Version `0.21.1+filmscan.8`.
+
+**Testing**
+- `cargo xtask ci`: everything passed except the known version test. The steps after `test` (GPU, parity, layers,
+  assets, roots, wasm) were run one by one and passed.
+- `gpu_matches_cpu` passed.
+- `cargo test -p lightcraft-fetch`: 29 tests passed.
+- `zap_on_real_scans` on `negatives-london`: the frames and Zap! measurements are identical to before. The converted
+  pictures differ (up to 55 levels on 170429, ~3 levels darker on average).
+  - The cause is upstream: plain renders of the same DNGs differ the same way between upstream v0.21.1 and `main`.
+    Ours are byte-identical to upstream's in both states.
+  - Probably the TIFF/DNG decode moving to craft-libs (#4244 and following).
+
+**Next**
+- Release when upstream tags; the release notes then need the upstream commits summarised. Nothing is pushed yet.
+
 ### 2026-11-18: README changes no longer force a rebuild
 
 - Until `.7`, every package contained the repository's `README.md`, and `publish.sh` refused packages whose source
