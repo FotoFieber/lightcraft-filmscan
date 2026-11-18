@@ -15,11 +15,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  macos:
-    name: macOS universal
-    # Intel: GitHub's Apple silicon runners were often unavailable; package.sh builds both architectures anyway.
+  # Each architecture on its own machine, at the same time: one machine compiling both took ~90 minutes.
+  macos-bin:
+    name: macOS ${{ matrix.target }}
+    # Intel: GitHub's Apple silicon runners were often unavailable; Apple silicon is cross-compiled.
     runs-on: macos-15-intel
     timeout-minutes: 120
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
@@ -30,9 +35,36 @@ jobs:
       - uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
         with:
           toolchain: stable
-          targets: aarch64-apple-darwin, x86_64-apple-darwin
+          targets: ${{ matrix.target }}
       - name: Build
-        run: packaging/fotofieber/build-macos.sh
+        run: packaging/fotofieber/build-macos.sh --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-bin-${{ matrix.target }}
+          path: dist/fotofieber/macos-bin/${{ matrix.target }}/
+          if-no-files-found: error
+          retention-days: 1
+
+  # The universal app and the command-line ZIP from both architectures' binaries: no compiling.
+  macos:
+    name: macOS universal
+    needs: macos-bin
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: macos-bin-*
+          path: ${{ runner.temp }}/macos-bin
+      - name: Package
+        # download-artifact puts each artifact in a folder of its name: macos-bin-<triple>.
+        run: |
+          mkdir -p "$RUNNER_TEMP/bins"
+          for d in "$RUNNER_TEMP"/macos-bin/macos-bin-*; do mv "$d" "$RUNNER_TEMP/bins/${d##*/macos-bin-}"; done
+          packaging/fotofieber/build-macos.sh --prebuilt "$RUNNER_TEMP/bins"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: filmscan-macos

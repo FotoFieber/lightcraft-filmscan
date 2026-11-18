@@ -3,7 +3,14 @@
 # GitHub workflow .github/workflows/fotofieber-build.yml runs it; it also works on any Mac with Rust
 # and the Xcode command-line tools.
 #
-#   packaging/fotofieber/build-macos.sh
+#   packaging/fotofieber/build-macos.sh                         # both architectures, one after the other
+#   packaging/fotofieber/build-macos.sh --target <triple>       # step 1: one architecture's binaries only
+#   packaging/fotofieber/build-macos.sh --prebuilt <dir>        # step 2: the app from step 1's binaries
+#
+# The GitHub workflow runs step 1 for aarch64-apple-darwin and x86_64-apple-darwin on two machines at
+# once, then step 2: about half the wait of one machine compiling both. --target writes
+# dist/fotofieber/macos-bin/<triple>/{lightcraft,lightcraft-cli,BUILT_FROM}; --prebuilt <dir> takes a
+# folder holding one such <triple> folder per architecture, all built from HEAD.
 #
 # Output in dist/fotofieber/:
 #   lightcraft-filmscan-<version>-macos-universal.zip       "LightCraft Film Scan.app"
@@ -28,10 +35,52 @@ PLAIN="${VERSION%%[+-]*}"
 NAME="LightCraft Film Scan"
 BUNDLE_ID="ch.fotofieber.LightCraftFilmScan"
 SHA="$(git -C "$ROOT" rev-parse HEAD)"
+TARGETS=(aarch64-apple-darwin x86_64-apple-darwin)
+
+MODE=all ARG=""
+case "${1:-}" in
+  "") ;;
+  --target | --prebuilt) MODE="${1#--}" ARG="${2:?usage: build-macos.sh [--target <triple> | --prebuilt <dir>]}" ;;
+  *) echo "usage: build-macos.sh [--target <triple> | --prebuilt <dir>]" >&2; exit 2 ;;
+esac
+
+# The fonts are embedded when compiling, and their licences go into the packages: both steps need them.
+# shellcheck source=../fonts.sh
+. "$ROOT/packaging/fonts.sh"
+prepare_fonts
+
+if [[ "$MODE" == target ]]; then
+  [[ " ${TARGETS[*]} " == *" $ARG "* ]] || { echo "error: --target is one of ${TARGETS[*]}" >&2; exit 2; }
+  # The same build as packaging/macos/package.sh's, for one architecture.
+  (cd "$ROOT" && cargo build --release --locked -p lightcraft -p lightcraft-cli \
+    --features lightcraft/heif,lightcraft-cli/heif --target "$ARG")
+  bin="$OUT/macos-bin/$ARG"
+  rm -rf "$bin" && mkdir -p "$bin"
+  cp "$CARGO_TARGET_DIR/$ARG/release/lightcraft" "$CARGO_TARGET_DIR/$ARG/release/lightcraft-cli" "$bin/"
+  echo "$SHA" >"$bin/BUILT_FROM"
+  lipo -info "$bin/lightcraft"
+  exit 0
+fi
 
 rm -rf "$DIST"
 mkdir -p "$DIST" "$OUT"
-"$ROOT/packaging/macos/package.sh" --arch universal
+if [[ "$MODE" == prebuilt ]]; then
+  # Put each architecture's binaries where package.sh --skip-build looks for them. Every one must be
+  # built from this commit, or the app would mix sources.
+  for t in "${TARGETS[@]}"; do
+    from="$ARG/$t"
+    [[ "$(cat "$from/BUILT_FROM" 2>/dev/null)" == "$SHA" ]] ||
+      { echo "error: $from was not built from $SHA" >&2; exit 1; }
+    mkdir -p "$CARGO_TARGET_DIR/$t/release"
+    for b in lightcraft lightcraft-cli; do
+      # Workflow artifacts lose the executable bit.
+      install -m 755 "$from/$b" "$CARGO_TARGET_DIR/$t/release/$b"
+    done
+  done
+  "$ROOT/packaging/macos/package.sh" --arch universal --skip-build
+else
+  "$ROOT/packaging/macos/package.sh" --arch universal
+fi
 
 WORK="$CARGO_TARGET_DIR/macos-package"
 STAGE="$CARGO_TARGET_DIR/fotofieber-macos"
@@ -73,7 +122,8 @@ codesign --verify --strict --verbose=2 "$CLI_DIR/lightcraft-filmscan-cli"
 ditto -c -k --keepParent "$CLI_DIR" "$CLI_ZIP"
 
 # Smoke test: both architectures are in the app, and the command-line tool runs.
-lipo -info "$APP/Contents/MacOS/LightCraft"
+info="$(lipo -info "$APP/Contents/MacOS/LightCraft")" && echo "$info"
+[[ "$info" == *arm64* && "$info" == *x86_64* ]] || { echo "error: the app is not universal" >&2; exit 1; }
 "$CLI_DIR/lightcraft-filmscan-cli" --version
 echo "$SHA" >"$OUT/BUILT_FROM-macos"
 (cd "$OUT" && shasum -a 256 "$(basename "$APP_ZIP")" "$(basename "$CLI_ZIP")")

@@ -42,7 +42,9 @@ else
 fi
 
 rm -f "$OUT"/*-macos-universal.zip "$OUT"/*-windows-x64.zip "$OUT"/BUILT_FROM-macos "$OUT"/BUILT_FROM-windows
-gh run download "$RUN" -R "$FORK" -D "$OUT/.download"
+# Only the packages: the per-architecture macOS binaries (macos-bin-*) are the workflow's own
+# intermediate step, and their BUILT_FROM would overwrite the .deb's.
+gh run download "$RUN" -R "$FORK" -n filmscan-macos -n filmscan-windows -D "$OUT/.download"
 find "$OUT/.download" -type f -exec mv -f {} "$OUT/" \;
 rm -rf "$OUT/.download"
 for os in macos windows; do
