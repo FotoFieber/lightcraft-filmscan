@@ -94,6 +94,28 @@ Then follow the steps below.
 
 ## Log
 
+### 2026-11-18: state after v0.21.1-filmscan.7 (no release)
+
+**Upstream**
+- Still v0.21.1 (2026-11-12). `main` has 239 commits since then (last 2026-11-17), none on Convert Negative,
+  `crates/film` or the negative files. They are mostly the craft-libs cut-over (codecs, gain map, print, PSD, MRW).
+- #3985 (`2404f941`, mergeable), #3986 (`a529bdb2`) and #3987 (`a9d3c229`) are unchanged since 2026-11-13. #3986
+  and #3987 are conflicting. No review, comment or label since then.
+- @manueldeprada's `cr-2-pipeline` (`f84a8499`), `cr-3-engine` (`4c800191`) and `cr-4-panel` (`bc02c044`) are
+  unchanged and already in `filmscan`.
+- #3623 moved to `b0797a9b`, but only by merging `main` (0 own commits since `45b866f8`): no new ideas. No review.
+- No maintainer has ruled on the series or on #3623.
+
+**Compared with `filmscan`**
+- `filmscan` has nothing since `419ec87e` apart from the `.7` log entry.
+- A trial merge of `origin/main` (`git merge-tree`) conflicts only in `Cargo.lock` and `crates/engine/src/tests.rs`.
+  16 files are touched by both sides; the next upstream tag should merge cleanly apart from those two.
+
+**Recommendation**
+- Wait. There is nothing to take in and nothing new of ours to ship.
+- Release next when upstream tags a release after v0.21.1 (as `v<x>-filmscan`), when the series changes, or when we
+  have new work of our own.
+
 ### 2026-11-16: v0.21.1-filmscan.7 published (first Windows and macOS builds)
 
 **Upstream**
