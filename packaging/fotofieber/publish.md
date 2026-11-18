@@ -89,7 +89,9 @@ tags or pushes anything.
    - The Zap! check on real scans (`zap_on_real_scans`, ignored by default).
 6. Build: `packaging/fotofieber/build-deb.sh`. For macOS and Windows, push the branch to `fotofieber` (with the
    user's OK) and run `packaging/fotofieber/fetch-builds.sh`. It starts `.github/workflows/fotofieber-build.yml`
-   on GitHub's macOS and Windows machines, waits about 30–60 minutes, and downloads the ZIPs to `dist/fotofieber/`.
+   on GitHub's macOS and Windows machines, waits about 40 minutes, and downloads the ZIPs to `dist/fotofieber/`.
+   The two macOS architectures compile on two machines at once (`build-macos.sh --target`), then one job
+   puts the universal app together (`--prebuilt`).
    The builds are unsigned: an Apple Developer ID or a Windows code-signing certificate costs money and is the
    user's decision. Film Scan builds of these two get their own settings folder, library and app id through
    `LIGHTCRAFT_FILMSCAN=1` (`crates/engine/src/flavor.rs`), because they have no launcher script.
@@ -120,6 +122,18 @@ then `gh release edit <tag> -R FotoFieber/lightcraft-filmscan --notes-file dist/
 ---
 
 ## Log
+
+### 2026-11-18: macOS builds on two machines at once
+
+- `0ecc6068`: `fotofieber-build.yml` compiles `aarch64-apple-darwin` and `x86_64-apple-darwin` in two parallel jobs
+  (`build-macos.sh --target`), and a third job puts the universal app and the CLI ZIP together without compiling
+  (`--prebuilt`, through `package.sh --skip-build`). It refuses binaries of another commit and an app that is not
+  universal.
+- `fetch-builds.sh` downloads only `filmscan-macos` and `filmscan-windows`. The intermediate `macos-bin-*` artifacts
+  (kept 1 day) hold a `BUILT_FROM` that would overwrite the .deb's.
+- Test run 44275374063 on `ci/macos-split`: macOS took 39 minutes instead of ~90 (aarch64 25 min, x86_64 36 min,
+  assembly 3 min); Windows took 28. The app has arm64 and x86_64, the package README, the Film Scan library name
+  and the CJK fonts, and is the same size as the `.8` release's to within 2 KB.
 
 ### 2026-11-18: v0.21.1-filmscan.8 published (upstream main + rustls fix)
 
