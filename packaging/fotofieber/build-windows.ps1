@@ -56,7 +56,10 @@ New-Item -ItemType Directory -Force -Path $Folder, $Out | Out-Null
 # The same names as the Linux commands, so they are not mistaken for an official LightCraft.
 Copy-Item (Join-Path $Bin 'lightcraft.exe') (Join-Path $Folder 'lightcraft-filmscan.exe')
 Copy-Item (Join-Path $Bin 'lightcraft-cli.exe') (Join-Path $Folder 'lightcraft-filmscan-cli.exe')
-foreach ($f in 'README.md', 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
+# Our own package README, not the repository's: README.md can then change after a build without making
+# the package stale (publish.sh leaves README.md out of its source check).
+Copy-Item (Join-Path $Root 'packaging\fotofieber\README-package.md') (Join-Path $Folder 'README.md')
+foreach ($f in 'LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE') {
   $p = Join-Path $Root $f
   if (Test-Path $p) { Copy-Item $p $Folder }
 }

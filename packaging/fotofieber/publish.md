@@ -66,23 +66,50 @@ Write a log entry with:
 
 Then follow the steps below.
 
+**What a change after the build costs.** `publish.sh` only publishes packages built from the source being tagged,
+apart from three paths that reach no package: `packaging/fotofieber/` (this tooling and the release notes, but not
+`README-package.md`),
+`.github/workflows/fotofieber-build.yml` and `README.md`. The packages carry `packaging/fotofieber/README-package.md`
+as their README, a short install guide without version numbers or test results. So:
+- `README.md`, the notes and the tooling can change after the build without a rebuild;
+- `README-package.md` is in the packages: when you change it, build again (the check covers it);
+- everything else, `docs/` too (`docs/whats-new.md` is compiled into the app), means building again.
+
+Release facts (which builds were tested, from which version a platform exists) go in the release notes
+(`release-notes.sh`), not in `README.md`. `publish.sh <tag> --check` runs every check and stops before it writes,
+tags or pushes anything.
+
 1. Merge the new upstream tag, if there is one. Set the version to `<x>+filmscan`; a rebuild on the same tag gets `+filmscan.N`. On a conflict in `Cargo.toml` or `Cargo.lock`, take theirs, set the version, then run `cargo update -w`.
 2. Take in the series delta with `git apply --3way` and resolve the conflicts. Keep upstream's code, and our Zap! on top of it.
 3. Check that `crates/gpu/src/render.rs` `linear()` still sends `lin_needs_cpu` to `lin_cpu`.
-4. Run the tests:
+4. Finish the changes that go into the packages: the code, `docs/` and `README-package.md`. `README.md` can wait.
+5. Run the tests:
    - `cargo xtask ci`. The one expected failure is `xtask version::tests::the_real_manifest_has_a_valid_version`.
    - `cargo test -p lightcraft-gpu --test it gpu_matches_cpu`.
    - The Zap! check on real scans (`zap_on_real_scans`, ignored by default).
-5. Build: `packaging/fotofieber/build-deb.sh`. For macOS and Windows, push the branch to `fotofieber` (with the
+6. Build: `packaging/fotofieber/build-deb.sh`. For macOS and Windows, push the branch to `fotofieber` (with the
    user's OK) and run `packaging/fotofieber/fetch-builds.sh`. It starts `.github/workflows/fotofieber-build.yml`
    on GitHub's macOS and Windows machines, waits about 30–60 minutes, and downloads the ZIPs to `dist/fotofieber/`.
    The builds are unsigned: an Apple Developer ID or a Windows code-signing certificate costs money and is the
    user's decision. Film Scan builds of these two get their own settings folder, library and app id through
    `LIGHTCRAFT_FILMSCAN=1` (`crates/engine/src/flavor.rs`), because they have no launcher script.
-6. Optionally, take screenshots: `screenshots.sh`.
-7. Write the notes with `release-notes.sh <tag> > dist/fotofieber/notes.md`. Credit every source by hand: upstream, @smyrgeorge, the review helpers, us, and ideas from #3623. Add a sentence for users.
-8. **Get the user's OK**, including on the screenshots.
-9. Run `git fetch fotofieber`, then `publish.sh <tag>`. It attaches the macOS and Windows ZIPs when they were built from the same source as the .deb.
+7. Optionally, take screenshots: `screenshots.sh`.
+8. Write the notes with `release-notes.sh <tag> > dist/fotofieber/notes.md`. Credit every source by hand: upstream, @smyrgeorge, the review helpers, us, and ideas from #3623. Add a sentence for users. Update what the maintainer has tried (`tested=` in `release-notes.sh`).
+9. **Get the user's OK**, including on the screenshots. Changes to `README.md` and the notes from this review need no rebuild.
+10. Run `git fetch fotofieber`, then `publish.sh <tag> --check`, then `publish.sh <tag>`. It attaches the macOS and Windows ZIPs when they were built from the same source as the .deb.
+
+### Docs only (no release)
+
+The repository's front page shows the `filmscan` branch, so a change to `README.md` needs no release and no build:
+
+```sh
+git commit …            # README.md only
+git fetch fotofieber
+git -c credential.helper= -c credential.helper='!gh auth git-credential' push fotofieber filmscan
+```
+
+To fix the text of a published release: `release-notes.sh <upstream-tag> <tag> > dist/fotofieber/notes.md`, edit,
+then `gh release edit <tag> -R FotoFieber/lightcraft-filmscan --notes-file dist/fotofieber/notes.md`.
 
 ### When to stop
 
@@ -93,6 +120,18 @@ Then follow the steps below.
 ---
 
 ## Log
+
+### 2026-11-18: README changes no longer force a rebuild
+
+- Until `.7`, every package contained the repository's `README.md`, and `publish.sh` refused packages whose source
+  differed from HEAD outside `packaging/fotofieber`. So the README note that Windows was tested (`419ec87e`), written
+  after the builds, meant building all three platforms again (macOS about 50 minutes).
+- Now the packages carry `packaging/fotofieber/README-package.md` as their README (`build-deb.sh`,
+  `build-windows.ps1`, `build-macos.sh`), and `publish.sh` leaves `README.md` out of its check (`same_source`).
+- `README.md` no longer names versions or test results. Those are in each release's notes.
+- New: `publish.sh <tag> --check`, and the "Docs only (no release)" section above.
+- The new package README reaches users with the next build. The Windows and macOS scripts were not run here: the
+  next `fetch-builds.sh` run tests them.
 
 ### 2026-11-18: state after v0.21.1-filmscan.7 (no release)
 

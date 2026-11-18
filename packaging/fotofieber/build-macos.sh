@@ -47,6 +47,10 @@ pb "Set :CFBundleDisplayName $NAME"
 pb "Set :CFBundleShortVersionString $PLAIN"
 pb "Set :CFBundleVersion $PLAIN"
 plutil -lint "$plist"
+# Our own package README, not the repository's: README.md can then change after a build without making
+# the package stale (publish.sh leaves README.md out of its source check). Before signing: it is in the bundle.
+README_PKG="$ROOT/packaging/fotofieber/README-package.md"
+cp "$README_PKG" "$APP/Contents/Resources/Licenses/README.md"
 # The changed Info.plist breaks the ad-hoc signature package.sh made: sign again, the same way.
 xattr -cr "$APP"
 codesign --force --sign - --timestamp=none --options runtime --entitlements "$ROOT/packaging/macos/entitlements.plist" "$APP/Contents/MacOS/LightCraft"
@@ -64,6 +68,7 @@ CLI_NAME="lightcraft-filmscan-cli-$VERSION-macos-universal"
 CLI_DIR="$STAGE/$CLI_NAME"
 ditto "$WORK/lightcraft-cli-$VERSION-macos-universal" "$CLI_DIR"
 mv "$CLI_DIR/lightcraft-cli" "$CLI_DIR/lightcraft-filmscan-cli"
+cp "$README_PKG" "$CLI_DIR/README.md"
 codesign --verify --strict --verbose=2 "$CLI_DIR/lightcraft-filmscan-cli"
 ditto -c -k --keepParent "$CLI_DIR" "$CLI_ZIP"
 

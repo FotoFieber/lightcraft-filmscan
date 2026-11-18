@@ -98,6 +98,9 @@ for f in "$STAGE"/usr/share/icons/hicolor/*/apps/ai.storyteller.lightcraft.*; do
 done
 mkdir -p "$FS/usr/share/doc/lightcraft-filmscan"
 cp "$STAGE"/usr/share/doc/lightcraft/* "$FS/usr/share/doc/lightcraft-filmscan/"
+# Our own package README, not the repository's: README.md can then change after a build without making
+# the package stale (publish.sh leaves README.md out of its source check).
+install -m644 packaging/fotofieber/README-package.md "$FS/usr/share/doc/lightcraft-filmscan/README.md"
 VERSION="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' Cargo.toml)"
 sed "s|\${FS}|$FS|g" packaging/fotofieber/nfpm.yaml >"$C/nfpm-filmscan.yaml"
 VERSION="$VERSION" NFPM_ARCH=amd64 LIGHTCRAFT_MAINTAINER="$LIGHTCRAFT_MAINTAINER" \

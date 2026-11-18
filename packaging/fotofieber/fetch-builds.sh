@@ -47,6 +47,7 @@ find "$OUT/.download" -type f -exec mv -f {} "$OUT/" \;
 rm -rf "$OUT/.download"
 for os in macos windows; do
   built="$(cat "$OUT/BUILT_FROM-$os")"
-  [[ "$built" == "$HEAD" ]] || echo "warning: the $os build is from $built, HEAD is $HEAD" >&2
+  [[ "$built" == "$HEAD" ]] ||
+    echo "warning: the $os build is from $built, HEAD is $HEAD; publish.sh <upstream-tag> --check says whether that matters" >&2
 done
 ls -l "$OUT"/*-macos-universal.zip "$OUT"/*-windows-x64.zip

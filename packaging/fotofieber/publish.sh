@@ -7,6 +7,7 @@
 #   packaging/fotofieber/screenshots.sh            # optional; check the images before publishing
 #   packaging/fotofieber/release-notes.sh v0.21.1 > dist/fotofieber/notes.md   # read it
 #   packaging/fotofieber/publish.sh v0.21.1
+#   packaging/fotofieber/publish.sh v0.21.1 --check    # only the checks; tags, writes and pushes nothing
 #
 # Tags HEAD as <upstream-tag>-filmscan, pushes this branch and the tag to the remote `fotofieber`,
 # and creates the release with the .deb, the macOS and Windows ZIPs when fetch-builds.sh got them,
@@ -14,7 +15,9 @@
 # adds the source archives of the tag itself.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-BASE="${1:?usage: publish.sh <upstream-tag>}"
+BASE="${1:?usage: publish.sh <upstream-tag> [--check]}"
+CHECK=0
+[[ "${2:-}" == --check ]] && CHECK=1
 FORK=FotoFieber/lightcraft-filmscan
 REMOTE=fotofieber
 OUT="$ROOT/dist/fotofieber"
@@ -26,12 +29,21 @@ NOTES="$OUT/notes.md"
 BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD)"
 
 [[ -f "$DEB" ]] || { echo "error: $DEB missing; run build-deb.sh" >&2; exit 1; }
-[[ -s "$NOTES" ]] || { echo "error: $NOTES missing; run release-notes.sh $BASE > $NOTES and read it" >&2; exit 1; }
+[[ $CHECK == 1 || -s "$NOTES" ]] || { echo "error: $NOTES missing; run release-notes.sh $BASE > $NOTES and read it" >&2; exit 1; }
 [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]] || { echo "error: uncommitted changes" >&2; exit 1; }
 (cd "$OUT" && sha256sum -c SHA256SUMS.txt)
-# The .deb must be built from the source being tagged: only this release tooling may differ.
+# Every package must be built from the source being tagged. Only paths that reach no package may differ:
+# - packaging/fotofieber: this release tooling, except README-package.md, which goes into every package;
+# - the workflow that runs the macOS and Windows builds;
+# - README.md: the packages carry README-package.md instead, so the repository README can change after a build.
+# docs/ is not left out: docs/whats-new.md is compiled into the app (crates/ui-egui/src/dialogs.rs).
+same_source() {
+  [[ -n "$1" ]] && git -C "$ROOT" diff --quiet "$1" HEAD -- . ':(exclude)packaging/fotofieber' \
+    ':(exclude).github/workflows/fotofieber-build.yml' ':(exclude)README.md' &&
+    git -C "$ROOT" diff --quiet "$1" HEAD -- packaging/fotofieber/README-package.md
+}
 built="$(cat "$OUT/BUILT_FROM" 2>/dev/null || true)"
-if [[ -z "$built" ]] || ! git -C "$ROOT" diff --quiet "$built" HEAD -- . ':(exclude)packaging/fotofieber' ':(exclude).github/workflows/fotofieber-build.yml'; then
+if ! same_source "$built"; then
   echo "error: $DEB was not built from this source (built from '${built:-?}'); rebuild" >&2
   exit 1
 fi
@@ -49,12 +61,16 @@ for os in macos windows; do
   files=("$OUT"/lightcraft-filmscan-*"$VERSION"-"$os"-*.zip)
   [[ -e "${files[0]}" ]] || continue
   from="$(cat "$OUT/BUILT_FROM-$os" 2>/dev/null || true)"
-  if [[ -z "$from" ]] || ! git -C "$ROOT" diff --quiet "$from" HEAD -- . ':(exclude)packaging/fotofieber' ':(exclude).github/workflows/fotofieber-build.yml'; then
+  if ! same_source "$from"; then
     echo "error: the $os build was not built from this source (built from '${from:-?}'); run fetch-builds.sh" >&2
     exit 1
   fi
   others+=("${files[@]}")
 done
+if [[ $CHECK == 1 ]]; then
+  echo "==> ok: $TAG can be published from HEAD with $(basename "$DEB")${others[*]:+ and ${#others[@]} more}"
+  exit 0
+fi
 if [[ ${#others[@]} -gt 0 ]]; then
   (cd "$OUT" && sha256sum "$(basename "$DEB")" "${others[@]##*/}" >SHA256SUMS.txt)
 fi
