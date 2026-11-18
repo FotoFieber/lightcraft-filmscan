@@ -19,6 +19,21 @@ VERSION="$(git -C "$ROOT" show "$REF:Cargo.toml" | awk '/^\[/ { p = ($0 == "[wor
 TAG="$BASE-${VERSION#*+}"
 git -C "$ROOT" rev-parse -q --verify "$BASE^{commit}" >/dev/null || { echo "error: no tag $BASE" >&2; exit 1; }
 
+# Upstream commits past the tag, merged in from upstream's main before it was tagged again: the newest commit of
+# UPSTREAM_REF (default origin/main; fetch it first) that this build contains. They are upstream's work, so they
+# get one line below instead of being listed as ours.
+UPSTREAM_REF="${UPSTREAM_REF:-origin/main}"
+UP=""
+if git -C "$ROOT" rev-parse -q --verify "$UPSTREAM_REF^{commit}" >/dev/null; then
+  UP="$(git -C "$ROOT" merge-base "$REF" "$UPSTREAM_REF")"
+  # Only when the tag doesn't already contain it: a build on the plain tag has nothing extra from upstream.
+  # (Release tags may sit on a release branch beside main, so this can't ask whether the tag precedes it.)
+  if git -C "$ROOT" merge-base --is-ancestor "$UP" "$BASE"; then
+    UP=""
+  fi
+fi
+not_up=(${UP:+--not "$UP"})
+
 # Commits of the open upstream pull requests, matched by subject: "<subject prefix>|<PR> [<PR> ...]".
 PRS=(
   "Convert Negative 2/4:|3985"
@@ -27,9 +42,9 @@ PRS=(
   "Convert Negative 2/4–4/4:|3985 3986 3987"
 )
 
-commits() { git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$BASE..$REF"; }
+commits() { git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$BASE..$REF" ${not_up[@]+"${not_up[@]}"}; }
 line() { printf -- '- %s ([`%s`](https://github.com/%s/commit/%s))\n' "$3" "${1:0:8}" "$FORK" "$1"; }
-first() { git -C "$ROOT" log --reverse --no-merges --format='%H' --grep="$1" "$BASE..$REF" | head -1; }
+first() { git -C "$ROOT" log --reverse --no-merges --format='%H' --grep="$1" "$BASE..$REF" ${not_up[@]+"${not_up[@]}"} | head -1; }
 short() { local h; h="$(first "$1")"; [[ -n "$h" ]] && printf '[`%s`](https://github.com/%s/commit/%s)' "${h:0:8}" "$FORK" "$h"; }
 
 pr_of() {
@@ -74,12 +89,26 @@ since=""
 if [[ -n "$prev" ]]; then
   while IFS=$'\t' read -r hash email subject; do
     since+="$(line "$hash" "$email" "$subject")"$'\n'
-  done < <(git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$prev..$REF")
+  done < <(git -C "$ROOT" log --reverse --no-merges --format='%H%x09%ae%x09%s' "$prev..$REF" ${not_up[@]+"${not_up[@]}"})
+fi
+
+# Upstream's commits after the tag that this build contains (see UP above).
+up_line="" up_block="" up_intro="" up_also="" based="$BASE"
+if [[ -n "$UP" ]]; then
+  n_up="$(git -C "$ROOT" rev-list --count --no-merges "$BASE..$UP")"
+  up_short="$(git -C "$ROOT" rev-parse --short=8 "$UP")"
+  up_link="[\`$up_short\`](https://github.com/$UPSTREAM/commit/$UP)"
+  up_compare="[$BASE...$up_short](https://github.com/$UPSTREAM/compare/$BASE...$UP)"
+  based="$BASE + main at \`$up_short\`"
+  up_intro=", plus upstream's \`main\` up to $up_link ($n_up commits after $BASE, not yet in a LightCraft release)"
+  up_also=", plus upstream's \`main\` as described in 1b"
+  up_line="- LightCraft's own \`main\` after $BASE, up to $up_link: $n_up commits by the ArtCraft team and the LightCraft contributors, all of them upstream's work ($up_compare)."$'\n'
+  up_block="### 1b. Upstream \`main\` after $BASE"$'\n\n'"This build also contains upstream's \`main\` up to $up_link: $n_up commits after $BASE, not yet in a LightCraft release. They are upstream's work, listed in full at $up_compare. The \`.diff\` and the patch series below include them, because they are measured against $BASE."$'\n\n'
 fi
 
 since_block=""
-if [[ -n "$since" ]]; then
-  since_block="## What's new since $prev"$'\n\n'"$since"$'\n'
+if [[ -n "$since$up_line" ]]; then
+  since_block="## What's new since ${prev:-$BASE}"$'\n\n'"$up_line$since"$'\n'
 fi
 
 # macOS and Windows builds, when fetch-builds.sh downloaded them for this version.
@@ -123,12 +152,12 @@ if compgen -G "$ROOT/dist/fotofieber/screenshots/*.png" >/dev/null; then
 fi
 
 cat <<EOF
-**LightCraft Film Scan** is LightCraft **$BASE** with **Convert Negative**: film negative scans to positives, Zap! (find the frame,
+**LightCraft Film Scan** is LightCraft **$based** with **Convert Negative**: film negative scans to positives, Zap! (find the frame,
 straighten, crop and measure the film base in one step) and a roll mode. Version \`$VERSION\`.
 
 This is **not an official LightCraft release**. It is based on
 [LightCraft $BASE](https://github.com/$UPSTREAM/releases/tag/$BASE) by the ArtCraft team and the LightCraft
-contributors (MIT OR Apache-2.0), plus the changes listed below. Report problems with this build
+contributors (MIT OR Apache-2.0)${up_intro}, plus the changes listed below. Report problems with this build
 [here](https://github.com/$FORK/issues), not upstream.
 
 **Why this fork exists:** it is a playground for Linux users to explore film development features (turning negative
@@ -168,7 +197,7 @@ All changes: [$UPSTREAM $BASE...$FORK $TAG](https://github.com/$UPSTREAM/compare
   ([#2490](https://github.com/$UPSTREAM/pull/2490), by [@smyrgeorge](https://github.com/smyrgeorge)), ported from
   his [Film Lab](https://github.com/smyrgeorge/film-lab) (MIT). Part of $BASE, but without a menu or panel.
 
-### 2. From open upstream pull requests, by Yorgos S. ([@smyrgeorge](https://github.com/smyrgeorge))
+$up_block### 2. From open upstream pull requests, by Yorgos S. ([@smyrgeorge](https://github.com/smyrgeorge))
 
 Parts 2–4 of the series, not yet merged upstream: the settings and pipeline stage, the engine commands, and the
 Photo menu entry with its panel. Since the review round of 2026-11-12 they include review fixes by Manuel de Prada
@@ -202,7 +231,7 @@ $ours_build
 
 ## Not changed
 
-Everything else is LightCraft $BASE as released: see its
+Everything else is LightCraft $BASE as released${up_also}: see its
 [release notes](https://github.com/$UPSTREAM/releases/tag/$BASE). The in-app update check still reports official
 releases.
 EOF
