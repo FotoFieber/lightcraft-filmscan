@@ -2,6 +2,24 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-20: local build 0.21.1+filmscan.9 (not published)
+
+**What**
+- Merged upstream `main` at `c17badc6` (`8ea02895`): 100 commits after `27b755a9`. The one conflict was
+  `assets/ATTRIBUTION.md`; we kept upstream's craft-fonts row (now with Noto Sans Hebrew in the web build) and left
+  out the `docs/brand/` row, whose logos this fork removes. `Cargo.lock` merged by itself and keeps
+  `rustls-rustcrypto 0.1.0-pre.0`. Upstream replaced `AGENTS.md` with the shared Craft rules.
+- The Convert Negative series and the review fix branches are unchanged, so there was nothing else to take in.
+- `crates/gpu/src/render.rs` `linear()` now asks `lin_needs_cpu_stage`, which still includes `negative::enabled`.
+- Version `0.21.1+filmscan.9` (`e067e7ad`). Built with `--features heif` and the pinned craft-fonts.
+
+**Testing**
+- `cargo xtask ci`: fmt, clippy and heif passed. `test` failed only at the known version test. The steps after it
+  (parity, layers, assets, roots, wasm) were run one by one and passed.
+- `gpu_matches_cpu` passed. `zap_on_real_scans` found the frame on all 6 London scans (2–4 sides each). It was not
+  compared with the `.8` results.
+- `lightcraft-cli render` of a London DNG worked.
+
 ## 2026-11-20: state after v0.21.1-filmscan.8 (no release)
 
 **Upstream**
