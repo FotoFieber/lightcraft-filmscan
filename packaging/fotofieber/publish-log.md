@@ -18,7 +18,7 @@ One entry per release, check or study, newest first. The procedure is in [publis
 
 **Compared with `filmscan`**
 - Ours since `.8`: the split macOS build (`0ecc6068`), the publish.md update (`c6a92ab2`) and Pillow 13.0.0 for
-  the dev-only Sony distortion check (`1d1f2eac`, not pushed yet). None of them is user-facing.
+  the dev-only Sony distortion check (`1d1f2eac`). None of them is user-facing.
 - `1d1f2eac` changes `tools/`, which `publish.sh` does not leave out, so the `.8` packages no longer match HEAD.
   That only matters for a rebuild, and a new release needs one anyway.
 - A trial merge of `origin/main` (`git merge-tree`) conflicts only in `assets/ATTRIBUTION.md`: our removal of the
@@ -33,7 +33,8 @@ One entry per release, check or study, newest first. The procedure is in [publis
 **Recommendation**
 - Wait. There is no new tag, the series is unchanged, and we have nothing new for users.
 - Merge upstream `main` with the next release, or when upstream tags one.
-- Pushing `1d1f2eac` closes the fork's 43 Pillow alerts (dev-only). It needs no build.
+- Dependabot: no open alerts on the fork. The 43 Pillow alerts were fixed by `1d1f2eac` (pushed 2026-11-18), and
+  the 5 zip alerts were dismissed as "not used" on 2026-11-18, with the reason given in each dismissal.
 - Also: the log moved from the end of `publish.md` into this file.
 
 ## 2026-11-18: macOS builds on two machines at once
