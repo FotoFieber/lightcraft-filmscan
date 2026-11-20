@@ -3956,7 +3956,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "chrono",
  "craft-update",
@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-catalog"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "chrono",
  "crc32fast",
@@ -4006,7 +4006,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-cli"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "dhat",
  "lightcraft-codecs",
@@ -4023,7 +4023,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-codecs"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "bytemuck",
  "craft-cms",
@@ -4052,7 +4052,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-color"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "lightcraft-geom",
  "proptest",
@@ -4061,7 +4061,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-denoise"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "faer-core",
  "lightcraft-denoise-core",
@@ -4078,7 +4078,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-denoise-core"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "dhat",
  "lightcraft-raster",
@@ -4094,7 +4094,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-develop"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-mime",
  "lightcraft-color",
@@ -4107,7 +4107,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-engine"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "ab_glyph",
  "chrono",
@@ -4160,7 +4160,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-faces"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "lightcraft-testkit",
  "matrixmultiply",
@@ -4175,7 +4175,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-fetch"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-http-url",
  "log",
@@ -4187,14 +4187,14 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-film"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "libm",
 ]
 
 [[package]]
 name = "lightcraft-geocode"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-zip",
  "serde",
@@ -4202,7 +4202,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-geom"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "proptest",
  "serde",
@@ -4210,7 +4210,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-gpu"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "bytemuck",
  "lightcraft-color",
@@ -4230,14 +4230,14 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-inpaint"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "rayon",
 ]
 
 [[package]]
 name = "lightcraft-lensdb"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-xml",
  "lightcraft-develop",
@@ -4246,7 +4246,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-mcp"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-mime",
  "lightcraft-codecs",
@@ -4258,7 +4258,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-merge"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "lightcraft-codecs",
  "lightcraft-color",
@@ -4274,7 +4274,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-meta"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "chrono",
  "craft-heif",
@@ -4290,7 +4290,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-pipeline"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-cms",
  "craft-image-codecs",
@@ -4311,7 +4311,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-preview"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-image-codecs",
  "lightcraft-raster",
@@ -4321,7 +4321,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-raster"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "libc",
  "lightcraft-color",
@@ -4333,7 +4333,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-raw"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "chrono",
  "craft-image-codecs",
@@ -4358,7 +4358,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-scenes"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-image-codecs",
  "lightcraft-color",
@@ -4369,7 +4369,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-segment"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -4383,7 +4383,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-slideshow"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "lightcraft-raster",
  "serde",
@@ -4392,15 +4392,15 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-sysmem"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 
 [[package]]
 name = "lightcraft-testkit"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 
 [[package]]
 name = "lightcraft-ui-egui"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "craft-ui",
  "craft-update",
@@ -4433,7 +4433,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-web"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "crc32fast",
  "eframe",
@@ -4456,7 +4456,7 @@ dependencies = [
 
 [[package]]
 name = "lightcraft-wincolor"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "lightcraft-testkit",
  "windows-sys 0.61.2",
@@ -8296,7 +8296,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.21.1+filmscan.8"
+version = "0.21.1+filmscan.9"
 dependencies = [
  "brotli",
  "flate2",
