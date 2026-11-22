@@ -33,7 +33,7 @@ fn photo_menu_opens_the_panel_and_the_selector_picks_the_film_base() {
     };
     let ids: Vec<&str> = children.iter().filter_map(|n| if let MenuNode::Item { id, .. } = n { Some(id.as_str()) } else { None }).collect();
     // the menus put a command that opens a dialog last, after a separator
-    assert_eq!(ids, ["photo.convertNegative", "dialog.negativeZap"], "the conversion without cropping, then Zap!…");
+    assert_eq!(ids, ["photo.convertNegative", "photo.unzapNegative", "dialog.negativeZap"], "the conversion without cropping, UnZap!, then Zap!…");
     assert!(!photo.iter().any(|n| matches!(n, MenuNode::Item { id, .. } if id == "photo.convertNegative")), "only in the submenu");
     // Zap! is only Film Scan ▸ Zap!…: the command without the dialog is not in any menu (the panel's
     // button, the control channel and MCP still run it)
@@ -217,4 +217,20 @@ fn without_a_photo_the_menu_entry_is_an_error() {
     let r = h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
     assert_eq!(r["ok"], false, "{r}");
     assert_ne!(h.app.ui.right, RightPanel::Negative);
+}
+
+/// Photo ▸ Film Scan ▸ UnZap! switches the conversion off and clears it; on a photo with nothing
+/// to take back it is an error, not a silent success.
+#[test]
+fn the_unzap_menu_entry_takes_the_conversion_back() {
+    let mut h = demo();
+    let r = h.request("ui.menu.invoke", json!({"command": "photo.unzapNegative"}), T);
+    assert_ne!(r["ok"], true, "nothing to take back: {r}");
+    h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
+    h.settle(SETTLE);
+    assert!(negative(&h).enabled);
+    let r = h.request("ui.menu.invoke", json!({"command": "photo.unzapNegative"}), T);
+    assert_eq!(r["ok"], true, "{r}");
+    h.settle(SETTLE);
+    assert!(!negative(&h).enabled && negative(&h).measured.is_none());
 }

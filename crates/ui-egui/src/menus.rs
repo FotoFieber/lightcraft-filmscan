@@ -44,7 +44,8 @@ pub fn ui_enabled(app: &LightcraftApp, id: &str) -> bool {
         | "dialog.rename"
         | "dialog.captureTime"
         | "dialog.copySettings"
-        | "dialog.negativeZap" => app.session.active().is_some(),
+        | "dialog.negativeZap"
+        | "photo.unzapNegative" => app.session.active().is_some(),
         "photo.tagFromTracklog" => app.session.active().is_some() && app.services.pick_tracklog.is_some(),
         "photo.editInPhotoCraft" | "photo.editInExternal" => app.session.active().is_some() && app.services.open_with.is_some(),
         "app.exportPrevious" => app.session.active().is_some() && app.session.last_export.is_some(),

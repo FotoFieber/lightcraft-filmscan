@@ -733,3 +733,39 @@ fn map_bounded_keeps_the_order_and_stops() {
     assert!(crate::negative_zap::map_bounded(&Vec::<u64>::new(), 4, &|| false, &|_| {}, &f).is_empty());
     assert!((1..=crate::negative_zap::MAX_WORKERS).contains(&crate::negative_zap::workers()));
 }
+
+/// UnZap! takes back the conversion and Zap!'s crop and leaves the other edits, a crop changed
+/// since, and photos Zap! never touched; one undo step brings Zap! back.
+#[test]
+fn unzap_takes_back_the_conversion_and_the_zap_crop_only() {
+    let dir = std::env::temp_dir().join(format!("lc-unzap-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = negative_scan(&dir, 1.5);
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [path.to_string_lossy()]})).unwrap();
+    let id = s.active().unwrap();
+    let full = s.develop_of(id).unwrap().crop.geometry;
+    assert!(s.execute("develop.negativeUnzap", &json!({})).is_err(), "nothing to take back on a photo Zap! never touched");
+    s.execute("develop.negativeZap", &json!({})).unwrap();
+    s.execute("develop.set", &json!({"control": "wb.temp", "value": 5600.0})).unwrap();
+    let zapped = s.develop_of(id).unwrap();
+    assert!(zapped.negative.enabled && zapped.crop.geometry != full);
+    let r = s.execute("develop.negativeUnzap", &json!({})).unwrap();
+    assert_eq!(r["changed"], 1, "{r}");
+    let d = s.develop_of(id).unwrap();
+    assert_eq!(d.negative, lightcraft_develop::Negative::default(), "the conversion is off and cleared");
+    assert_eq!(d.crop.geometry, full, "the crop is the full frame again");
+    assert_eq!(d.wb, zapped.wb, "other edits stay");
+    // one step back brings Zap! back
+    s.execute("edit.undo", &json!({})).unwrap();
+    assert_eq!(s.develop_of(id).unwrap(), zapped);
+    // a crop changed since Zap! is the user's own and stays
+    s.execute("crop.set", &json!({"rect": [0.2, 0.2, 0.7, 0.7], "angle": 0.0})).unwrap();
+    let own = s.develop_of(id).unwrap().crop.geometry;
+    s.execute("develop.negativeUnzap", &json!({})).unwrap();
+    let d = s.develop_of(id).unwrap();
+    assert!(!d.negative.enabled && d.negative.zap_crop.is_none());
+    assert_eq!(d.crop.geometry, own);
+    assert!(s.execute("develop.negativeUnzap", &json!({"ids": [999_999]})).is_err(), "a wrong id is a bad request");
+    std::fs::remove_dir_all(&dir).ok();
+}

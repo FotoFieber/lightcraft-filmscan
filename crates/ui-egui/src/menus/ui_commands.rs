@@ -286,6 +286,7 @@ pub const UI_COMMANDS: &[UiCommand] = &[
     // opened, or (the usual way, after a separator as a dialog) Zap! on the selection, its choices asked first
     ("photo.convertNegative", "Convert Without Cropping", None, "Photo>Film Scan"),
     ("dialog.negativeZap", "Zap!…", None, "Photo>Film Scan"),
+    ("photo.unzapNegative", "UnZap!", None, "Photo>Film Scan"),
     ("photo.tagFromTracklog", "Auto-Tag from Tracklog…", None, "Photo"),
     ("app.exportPrevious", "Export with Previous", Some("Cmd+Alt+Shift+E"), "File"),
 ];

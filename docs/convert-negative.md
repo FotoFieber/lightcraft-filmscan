@@ -32,6 +32,11 @@ saved in a preset and undone, and previews and exports convert with the same num
    **Done** (or Return) goes back to the Edit panel. Everything else in the Edit panel then edits the
    positive.
 
+**Photo ▸ Film Scan ▸ UnZap!** (or the panel's UnZap! button) takes Zap! back on the selection: the
+conversion is switched off and cleared, with its measurement, picks and roll, and Zap!'s crop and
+straightening go back to the full frame. A crop you changed since stays, and so does every other edit.
+One Undo brings Zap! back. Sliders of the conversion go back to their defaults with it.
+
 The **Film negative** box switches the conversion off and on again without losing its settings, as does
 the section's eye (`develop.sectionEnabled` with `negative`); resetting the section switches the whole
 conversion off.
@@ -88,6 +93,8 @@ are their makers' trademarks and only say which stock a recipe takes after.
 |---|---|
 | `photo.convertNegative` | Photo ▸ Film Scan ▸ Convert Without Cropping: switches the conversion on (measuring it if it has no measurement) and opens the panel. No photo selected: an error. |
 | `dialog.negativeZap` | Photo ▸ Film Scan ▸ Zap!…: asks for the film, format, sprocket holes and edge (and, for several photos, each on its own or as one roll), then runs `develop.negativeZap` on the selection |
+| `photo.unzapNegative` | Photo ▸ Film Scan ▸ UnZap!, and the panel's UnZap! button: runs `develop.negativeUnzap` on the selection |
+| `develop.negativeUnzap` | `{ids?}`: takes back what Zap! did on each target photo. The conversion is switched off and cleared (its measurement, picks and roll too) and Zap!'s crop and straightening go back to the full frame; a crop changed since, and every other edit, stay. One undo step. Photos with nothing to take back are skipped; an error when none had. Returns `{changed, skipped}`. |
 | `develop.negative` | Switches the conversion on or off and sets its choices; see the parameters below. Returns the conversion, with `presetName` and, when it measured, the `border` used (%). |
 | `develop.negativePick` | `{x, y, target?}`: the film base (`target: "base"`, the default) or the gray point (`"gray"`) from the scan at a normalized point (outside 0 … 1: the nearest edge). Switches the conversion on and to Advanced, and measures it first if it has no measurement. |
 | `develop.set` | The sliders above, by id. |

@@ -18,6 +18,9 @@ use crate::media::{SourceLevel, SourceRef};
 /// The label of Zap!'s undo step and History entries.
 pub const LABEL: &str = "Zap";
 
+/// The label of UnZap!'s undo step and History entries.
+pub const UNZAP_LABEL: &str = "UnZap";
+
 /// Whether the crop keeps 35 mm film's sprocket holes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Sprockets {
@@ -135,11 +138,27 @@ const OWN_CROP_BORDER: f64 = 0.08;
 /// set again). An unchanged full-frame crop is nobody's.
 pub fn own_crop(d: &DevelopSettings) -> bool {
     let g = d.crop.geometry;
-    let same = |a: &CropGeometry, b: &CropGeometry| {
-        let (p, q) = (a.rect, b.rect);
-        [(p.x0, q.x0), (p.y0, q.y0), (p.x1, q.x1), (p.y1, q.y1), (a.angle, b.angle)].iter().all(|(x, y)| (x - y).abs() < 1e-6)
-    };
-    !same(&g, &CropGeometry::default()) && !d.negative.zap_crop.is_some_and(|z| same(&z, &g))
+    !same_crop(&g, &CropGeometry::default()) && !d.negative.zap_crop.is_some_and(|z| same_crop(&z, &g))
+}
+
+fn same_crop(a: &CropGeometry, b: &CropGeometry) -> bool {
+    let (p, q) = (a.rect, b.rect);
+    [(p.x0, q.x0), (p.y0, q.y0), (p.x1, q.x1), (p.y1, q.y1), (a.angle, b.angle)].iter().all(|(x, y)| (x - y).abs() < 1e-6)
+}
+
+/// UnZap!: `before` without what Zap! did: the conversion is gone with its measurement, picks, roll
+/// and Zap!'s crop (the full frame again, straightening included), and every other edit stays. A
+/// crop changed since Zap! is the user's own and stays. `None` when there is nothing to take back.
+pub fn unzap(before: &DevelopSettings) -> Option<DevelopSettings> {
+    if before.negative == lightcraft_develop::Negative::default() {
+        return None;
+    }
+    let mut settings = before.clone();
+    if before.negative.zap_crop.is_some_and(|z| same_crop(&z, &before.crop.geometry)) {
+        settings.crop.geometry = CropGeometry::default();
+    }
+    settings.negative = lightcraft_develop::Negative::default();
+    Some(settings)
 }
 
 /// Zap! on `scan` (the photo's source, before orientation) of a photo with settings `before` and

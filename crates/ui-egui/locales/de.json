@@ -3594,6 +3594,8 @@
   "convert negative|Print": "Abzug",
   "Find the frame on the scan, straighten and crop to it and pick the film base. A crop of your own stays": "Bild auf dem Scan finden, gerade ausrichten, zuschneiden und die Filmbasis wählen. Ein eigener Zuschnitt bleibt erhalten",
   "Zap!…": "Zap!…",
+  "UnZap!": "UnZap!",
+  "Take back what Zap! did: the conversion is switched off and Zap!'s crop goes back to the full frame. Your other edits stay": "Macht Zap! rückgängig: Die Umwandlung wird ausgeschaltet und der Zuschnitt von Zap! geht auf das ganze Bild zurück. Deine anderen Bearbeitungen bleiben.",
   "Negative": "Negativ",
   "Sprocket holes": "Perforation",
   "Remove Sprocket Holes": "Perforation entfernen",

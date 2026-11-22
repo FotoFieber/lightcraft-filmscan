@@ -167,6 +167,12 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
                     app.toast(ui.ctx(), e);
                 }
             }
+            let tip = "Take back what Zap! did: the conversion is switched off and Zap!'s crop goes back to the full frame. Your other edits stay";
+            if text_button(ui, "negative-unzap", "UnZap!", false).on_hover_text(tr(tip)).clicked()
+                && let Err(e) = app.run("develop.negativeUnzap", json!({}))
+            {
+                app.toast(ui.ctx(), e);
+            }
             let formats: Vec<(&str, &str)> = FORMATS.iter().map(|f| (f.0, f.1)).collect();
             zap_choice(ui, "negative-zapMargin", "Where the crop sits on the frame's edge", &mut app.ui.negative_zap_margin, &MARGINS);
             zap_choice(ui, "negative-zapFormat", "The film format, for an edge the scan doesn't show", &mut app.ui.negative_zap_format, &formats);

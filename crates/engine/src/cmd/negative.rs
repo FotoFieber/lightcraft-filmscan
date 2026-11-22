@@ -139,6 +139,31 @@ fn zap(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(out)
 }
 
+/// `develop.negativeUnzap`: on each target photo, takes back what Zap! did (see
+/// [`negative_zap::unzap`]); one undo step. Photos with nothing to take back are skipped and
+/// counted; an error only when none had.
+fn unzap(s: &mut Session, p: &Value) -> Result<Value> {
+    let c = "develop.negativeUnzap";
+    let ids = s.targets(p)?;
+    if let Some(id) = ids.iter().find(|id| s.catalog.photo(**id).is_none()) {
+        return Err(bad(c, format!("no such photo: {}", id.0)));
+    }
+    let mut ops = Vec::new();
+    for id in &ids {
+        if let Some(settings) = s.develop_of(*id).and_then(|d| negative_zap::unzap(&d))
+            && let Some(op) = s.develop_op(*id, settings, negative_zap::UNZAP_LABEL)
+        {
+            ops.push(op);
+        }
+    }
+    if ops.is_empty() {
+        return Err(bad(c, "nothing to unzap: no photo has a conversion or a Zap! crop"));
+    }
+    let changed = ops.len();
+    s.commit(negative_zap::UNZAP_LABEL, Op::Batch { ops })?;
+    Ok(json!({"changed": changed, "skipped": ids.len() - changed}))
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(
@@ -287,6 +312,19 @@ pub fn specs() -> Vec<CommandSpec> {
                 "{ids?, margin?: inside|edge|border|film (default inside; film: the whole film inside the holder, rebate and sprocket holes and all, as for 35 mm across a medium-format gate), format?: auto|35mm|half|xpan|645|66|67|68|69|612|617 (default auto: no aspect assumed), sprockets?: remove|keep (default remove), film?: negative|bw|slide (default negative; bw: a black-and-white negative, converted with the Monochrome film profile, its base still from the rebate), roll?: bool (default false)} — on each target photo (`ids`, else the selection), finds the picture on the scan (the holder, the film's rebate and its sprocket holes left out), straightens and crops to it (sprockets keep: the long sides of 35 mm by the sprocket holes, just outside whole ones, just inside ones the holder cuts), and for a negative takes the film base from the rebate and measures the picture (a slide is only cropped); one undo step for all. A crop the user set (not Zap!'s last one) stays; then only the base and the measurement are taken. With `roll`, the negatives are one roll: measured together (the film base the median of their rebates', the levels from all their pictures), the same measurement in each, `negative.roll` their number; a frame whose base is more than 15 % off is measured on its own. A roll's frames also agree on their crop: where most of them (of one orientation, at least 4) share an edge, a frame's edge more than 5 % off it is moved there and the frame measured again. A photo with no frame is left out → the first zapped photo's conversion with `zap` (what was found), `id`, `roll` ({frames, bases, apart} or null), `changed` and `failed` [{id, error}]; an error only when no photo was zapped",
                 has_selection,
                 zap
+            )
+        },
+        CommandSpec {
+            explicit_targets: true,
+            ..cmd!(
+                "develop.negativeUnzap",
+                "UnZap!",
+                // (no menu of its own: Photo ▸ Film Scan ▸ UnZap! is a UI entry, as Zap!'s)
+                [],
+                None,
+                "{ids?} — on each target photo (`ids`, else the selection), takes back what Zap! did: the Film Scan conversion is switched off and cleared (its measurement, picks and roll too), and Zap!'s crop and straightening go back to the full frame; a crop changed since stays, and every other edit too; one undo step for all. A photo with neither is skipped → {changed, skipped}; an error only when no photo had anything to take back",
+                has_selection,
+                unzap
             )
         },
     ]

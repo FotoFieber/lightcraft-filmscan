@@ -1455,6 +1455,8 @@ fn ui_commands_11(app: &mut LightcraftApp, ctx: &egui::Context, id: &str, p: &Va
         }
         "file.findMissing" => file_find_missing_command(app, id, p),
         "photo.convertNegative" => photo_convert_negative_command(app),
+        // takes back Zap! on the selection: the conversion off and Zap!'s crop gone
+        "photo.unzapNegative" => app.run("develop.negativeUnzap", json!({})),
         "photo.tagFromTracklog" => photo_tag_from_tracklog_command(app, ctx, id, p),
         "photo.locate" => photo_locate_command(app, p),
         "file.addFromDevice" => {
