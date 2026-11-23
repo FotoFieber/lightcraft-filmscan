@@ -586,3 +586,29 @@ fn the_noise_model_tiles_side_by_side_measure_as_one_after_another() {
         assert_eq!(parallel, serial, "negative {negative}");
     }
 }
+
+/// A zoomed window of a converted negative estimates the airlight from the positive, as the
+/// whole-frame render it stands in for does.
+#[test]
+fn the_airlight_proxy_of_a_negative_is_the_positive() {
+    use lightcraft_raster::blur::gaussian;
+
+    use crate::local::{airlight, dark_of, frame_airlight, white_balance};
+
+    let info = SourceInfo::default();
+    let scan = Rgb32f::from_fn(300, 200, |x, _| {
+        let t = 0.08 + 0.5 * x as f32 / 300.0;
+        [t, t * 0.6, t * 0.3]
+    });
+    let mut s = DevelopSettings::default();
+    let frame = crate::frame_for(&scan, &info, &s, true);
+    let plain = frame_airlight(&scan, &info, &s, &frame, 48, 32);
+    s.negative.enabled = true;
+    let converted = frame_airlight(&scan, &info, &s, &frame, 48, 32);
+    let mut positive = frame.sample(&scan, 48, 32);
+    crate::negative::apply_in(&mut positive, &s, Some(&frame));
+    white_balance(&mut positive, &info, &s);
+    let want = airlight(&gaussian(&positive.map(dark_of), (0.02 * frame.px_per_long(48)).max(1.0) as f32));
+    assert_eq!(converted.to_bits(), want.to_bits());
+    assert_ne!(converted.to_bits(), plain.to_bits());
+}
