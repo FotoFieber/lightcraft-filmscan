@@ -2,6 +2,16 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-23: v0.21.1-filmscan.10
+
+- Contents: `.9` plus upstream main `94219de0` (merged without conflicts) and one own change: while the Film Base or
+  Gray eyedropper is armed the Develop view shows the whole scan (the crop tool's geometry), so the rebate outside
+  the crop can be picked. Test: `the_selector_picks_outside_the_crop`; it fails without the change.
+- Upstream, the PRs #3985-#3987 and #3623: unchanged since the entry below.
+- Checks: `cargo xtask ci` green apart from the known version test; layers, assets, parity, roots and the GPU
+  equivalence test pass. The Zap! check on real scans was not rerun (no Zap! code changed).
+- Built: .deb locally; Windows and macOS on GitHub from `2e860474`. Not tested by the maintainer yet.
+
 ## 2026-11-23: state after v0.21.1-filmscan.9 (no release)
 
 **Upstream**
