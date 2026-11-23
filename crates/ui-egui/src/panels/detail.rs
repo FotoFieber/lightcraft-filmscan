@@ -160,10 +160,12 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     // the full-screen preview shows the photo only: no tool overlays
     let right = if fullscreen { RightPanel::None } else { app.ui.right };
     let crop_tool = right == RightPanel::Crop;
-    let frame = Frame::with_lens(photo.width.max(1) as usize, photo.height.max(1) as usize, &d, !crop_tool, photo.embedded_lens.as_ref());
+    // arming a film-base or gray pick shows the whole scan (as the crop tool does): the rebate lies outside the crop
+    let uncropped = crop_tool || picks_film_base(app);
+    let frame = Frame::with_lens(photo.width.max(1) as usize, photo.height.max(1) as usize, &d, !uncropped, photo.embedded_lens.as_ref());
     let aspect = frame.aspect() as f32;
     let ppp = ui.ctx().pixels_per_point();
-    let area = canvas.shrink(loupe_margin(fullscreen, crop_tool));
+    let area = canvas.shrink(loupe_margin(fullscreen, uncropped));
     let native = output_px(&frame);
     let texture_side = texture_side(ui.ctx());
     // two views (before, after): side by side or stacked
@@ -171,11 +173,11 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let split_view = matches!(app.ui.before_after, BeforeAfter::Split | BeforeAfter::SplitTopBottom);
     let areas = view_areas(app.ui.before_after, area);
     let main_area = *areas.last().unwrap_or(&area);
-    let visible_texture_aspect = visible_texture_aspect(app, id, &d, crop_tool);
+    let visible_texture_aspect = visible_texture_aspect(app, id, &d, uncropped);
     // Follow the texture only where it really differs (an unsupported raw's embedded JPEG with
     // another crop): a texture's whole-pixel size is a little off the exact aspect, and the crop
     // tool's overlays need the frame's own geometry.
-    let display_aspect = visible_texture_aspect.filter(|a| !crop_tool && (a / aspect - 1.0).abs() > 0.02).unwrap_or(aspect);
+    let display_aspect = visible_texture_aspect.filter(|a| !uncropped && (a / aspect - 1.0).abs() > 0.02).unwrap_or(aspect);
     let resp = ui.interact(canvas, egui::Id::unique("loupe"), Sense::click_and_drag());
     announce_photo(app, &resp, &photo);
     let mut target_rect = fit_rect(main_area, display_aspect, app.ui.zoom, native, ppp, app.ui.pan);
@@ -246,20 +248,20 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     // hover and before renders are stand-ins: the preview size is plenty and keeps them cheap
     let se = app.ui.settings.stand_in_edge(want, texture_side);
     let (sw, sh) = if aspect >= 1.0 { (se, short(se, aspect)) } else { (short(se, 1.0 / aspect), se) };
-    let ask = LoupeAsk { id, with_crop: !crop_tool, interacting, fit_px, overlay };
+    let ask = LoupeAsk { id, with_crop: !uncropped, interacting, fit_px, overlay };
     let settling = request_main_or_settle(app, ui, &ask, [rw, rh], plan.window_edge.is_none(), now);
     // hovering a preset or profile: the photo with that look, shown instead of the loupe render
     // once it is ready (nothing is committed)
     let hover_key = request_hover(app, &ask, [sw, sh]);
     if !interacting {
-        prefetch_neighbours(app, id, main_area, ppp, texture_side, !crop_tool);
+        prefetch_neighbours(app, id, main_area, ppp, texture_side, !uncropped);
     }
     // until the loupe has this photo: show its cached render / embedded preview / a thumbnail
-    request_stand_in(app, id, want, !crop_tool);
+    request_stand_in(app, id, want, !uncropped);
     if !interacting {
         // (what Settings ▸ Performance lets this mode prepare ahead)
         let prepare = prepare_ahead(app);
-        look_ahead(app, id, want.max(8), !crop_tool, prepare);
+        look_ahead(app, id, want.max(8), !uncropped, prepare);
     }
     let show_before = app.ui.before_after == BeforeAfter::Original || ui.input(|i| i.key_down(egui::Key::Backslash));
     // (the Before render waits for a settled photo like the loupe's own)
@@ -278,7 +280,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         aspect,
         ppp,
         texture_side,
-        crop_tool,
+        crop_tool: uncropped,
         interacting,
         look,
         holding: navigating || app.size_hold.holding(now),
@@ -352,7 +354,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     // the line of a wipe over both
     draw_wipe_line(app.ui.before_after, &p, img_rect, line);
     let map = CanvasMap::new(&frame, img_rect);
-    let over = OverPhoto { photo: &photo, d: &d, map: &map, canvas, img_rect, fullscreen, crop_tool };
+    let over = OverPhoto { photo: &photo, d: &d, map: &map, canvas, img_rect, fullscreen, crop_tool: uncropped };
     photo_overlays(app, ui, &p, &over);
     // Cursor selection must also run on gesture frames, when tool input is suppressed.
     if !matches!(right, RightPanel::Crop | RightPanel::Masking | RightPanel::Remove | RightPanel::RedEye) {
@@ -1046,6 +1048,11 @@ fn show_no_photo(app: &mut LightcraftApp, ui: &mut egui::Ui, canvas: Rect) {
     } else {
         super::empty_message(ui, canvas, "No photo selected", "Choose a photo in the grid or filmstrip");
     }
+}
+
+/// A film-base or gray pick is armed: the rebate lies outside the crop, so the whole scan shows.
+fn picks_film_base(app: &LightcraftApp) -> bool {
+    matches!(app.ui.tool.as_str(), "negBase" | "negGray")
 }
 
 /// The margin round the photo: none full screen, wide in the crop tool.

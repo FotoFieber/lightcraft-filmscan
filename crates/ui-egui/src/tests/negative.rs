@@ -210,6 +210,30 @@ fn the_selector_picks_through_a_lens_warp() {
     assert_ne!(picked, plain, "a point near the edge moves through the warp");
 }
 
+/// Arming the film-base pick shows the whole scan, so the rebate outside the crop can be clicked,
+/// and the click lands on the same scan point as the engine's own pick; afterwards the crop shows again.
+#[test]
+fn the_selector_picks_outside_the_crop() {
+    let mut h = demo();
+    h.request("ui.menu.invoke", json!({"command": "photo.convertNegative"}), T);
+    h.settle(SETTLE);
+    h.request("engine.execute", json!({"command": "crop.set", "params": {"rect": [0.3, 0.3, 0.7, 0.7]}}), T);
+    h.settle(SETTLE);
+    click(&mut h, "button:negativeMode-advanced");
+    click(&mut h, "icon:negBase");
+    h.settle(SETTLE);
+    let whole = h.app.image_rect.expect("the photo is on screen");
+    let (fx, fy) = (0.05, 0.5);
+    let at = whole.left_top() + egui::vec2(whole.width() * fx, whole.height() * fy);
+    h.request("ui.click", json!({"x": at.x, "y": at.y}), T);
+    h.settle(SETTLE);
+    let picked = negative(&h).base.expect("the click outside the crop picked the film base");
+    h.request("engine.execute", json!({"command": "develop.negativePick", "params": {"x": fx, "y": fy}}), T);
+    let engine = negative(&h).base.expect("a pick");
+    assert_eq!(picked, engine, "the click hit the scan point it showed");
+    assert!(h.app.ui.tool.is_empty(), "the pick is done");
+}
+
 #[test]
 fn without_a_photo_the_menu_entry_is_an_error() {
     let app = LightcraftApp::new(lightcraft_engine::Session::new(), Services { png: None, ..Default::default() });
