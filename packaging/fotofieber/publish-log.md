@@ -2,6 +2,41 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-23: state after v0.21.1-filmscan.9 (no release)
+
+**Upstream**
+- Still v0.21.1 (2026-11-12); `main` is at `94219de0` and still says `0.21.1`. It has 36 commits (without merges) after
+  `c17badc6`, the state merged for `.9`. They are #523 (Process V13: global Highlights and Shadows ease off at large
+  amounts, Texture, grading wheel), craft-libs pins (`33be356`, then `2be967e`), SQLite/WAL record boundaries,
+  extracting the #587 modules into craft-develop (#4656), and CI changes (nightly prereleases, then reverted in #4699).
+  None touches `crates/film`, the negative or Zap! files, or `crates/gpu/src/render.rs`.
+- #3985 (`2404f941`), #3986 (`a529bdb2`) and #3987 (`a9d3c229`) are unchanged since 2026-11-13: open, merge state
+  unknown, no maintainer ruling. #3985's `updatedAt` moved on 2026-11-22 without a new comment.
+- @manueldeprada's `cr-2-pipeline` (`f84a8499`), `cr-3-engine` (`4c800191`), `cr-4-panel` (`bc02c044`) are unchanged
+  and already in `filmscan`.
+- #3623 (`b0797a9b`) is unchanged since 2026-11-16 and now conflicts with `main`. No ruling.
+
+**Compared with `filmscan`**
+- `filmscan` is at `1867fe19` (UnZap!) and equals the tag `v0.21.1-filmscan.9` and `fotofieber/filmscan`: nothing
+  unpublished.
+- A trial merge of `origin/main` (`git merge-tree`) conflicts in one file, `crates/pipeline/src/local.rs`. Upstream
+  moved about 1,300 lines of it into craft-develop. Our 24 added lines sit in the region that moved: the call
+  `negative::apply_in` in `frame_airlight` and the test `the_airlight_proxy_of_a_negative_is_the_positive`.
+  `frame_airlight` is still in `local.rs` upstream (line 260), so the resolution is to take upstream's file and
+  re-add those two hunks. `Cargo.lock` and `Cargo.toml` merged by themselves, but upstream's lock still has
+  `rustls-rustcrypto 0.0.2-alpha` and `rustls-webpki 0.102.8`: check for them after the merge.
+- Also touched by the merge: the craft-libs pin moves from `52d2560c` to `2be967ec`, so the build needs the network
+  for the new rev, and `crates/pipeline` now depends on craft-develop.
+
+**Risks**
+- The V13 process work changes how Highlights and Shadows render for new edits. The merge does not touch our
+  negative step, but the London renders should be compared before and after, as on 2026-11-18.
+- The airlight proxy of a negative depends on the moved code: the test above must pass after the merge.
+
+**Recommendation**
+- Wait. No new tag, the series is unchanged, and we have nothing new for users since `.9`.
+- When upstream tags the next release, merge it then. Expect the one `local.rs` conflict described above.
+
 ## 2026-11-20: local build 0.21.1+filmscan.9 (not published)
 
 **What**
