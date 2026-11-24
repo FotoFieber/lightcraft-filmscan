@@ -10,7 +10,7 @@ One entry per release, check or study, newest first. The procedure is in [publis
 - Upstream, the PRs #3985-#3987 and #3623: unchanged since the entry below.
 - Checks: `cargo xtask ci` green apart from the known version test; layers, assets, parity, roots and the GPU
   equivalence test pass. The Zap! check on real scans was not rerun (no Zap! code changed).
-- Built: .deb locally; Windows and macOS on GitHub from `2e860474`. Not tested by the maintainer yet.
+- Built: .deb locally; Windows and macOS on GitHub from `2e860474`. The maintainer tested the Windows build; macOS is untested.
 
 ## 2026-11-23: state after v0.21.1-filmscan.9 (no release)
 
