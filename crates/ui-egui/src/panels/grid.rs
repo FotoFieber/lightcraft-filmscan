@@ -1451,6 +1451,12 @@ fn context_menu_stack_and_edits(app: &mut LightcraftApp, ui: &mut egui::Ui, id: 
     if ui.button(crate::i18n::tr("Rotate Right")).clicked() {
         let _ = app.run("photo.rotateRight", json!({}));
     }
+    if ui.button(crate::i18n::tr("Flip Horizontal")).clicked() {
+        let _ = app.run("photo.flipHorizontal", json!({}));
+    }
+    if ui.button(crate::i18n::tr("Flip Vertical")).clicked() {
+        let _ = app.run("photo.flipVertical", json!({}));
+    }
     ui.separator();
 }
 
