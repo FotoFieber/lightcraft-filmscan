@@ -14,6 +14,7 @@ use crate::state::{BeforeAfter, RightPanel, ToolOverlay, Zoom};
 use crate::theme::Tokens;
 use crate::widgets::{register, register_geometry};
 
+mod brush;
 mod crop;
 mod filmstrip;
 mod geometry;
@@ -24,6 +25,8 @@ mod masks;
 mod retouch;
 mod window;
 
+pub(crate) use brush::settle_wheel_edit;
+use brush::{brush_drag, brush_wheel};
 pub(crate) use crop::crop_angle_label;
 use crop::crop_overlay;
 #[cfg(test)]
@@ -163,7 +166,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let crop_tool = right == RightPanel::Crop;
     // arming a film-base or gray pick shows the whole scan (as the crop tool does): the rebate lies outside the crop
     let uncropped = crop_tool || picks_film_base(app);
-    let frame = Frame::with_lens(photo.width.max(1) as usize, photo.height.max(1) as usize, &d, !uncropped, photo.embedded_lens.as_ref());
+    let frame = Frame::with_lens(photo.width.max(1) as usize, photo.height.max(1) as usize, &d, !uncropped, photo.embedded_lens.as_deref());
     let aspect = frame.aspect() as f32;
     let ppp = ui.ctx().pixels_per_point();
     let area = canvas.shrink(loupe_margin(fullscreen, uncropped));
@@ -184,6 +187,7 @@ pub fn show(app: &mut LightcraftApp, ui: &mut egui::Ui) {
     let mut target_rect = fit_rect(main_area, display_aspect, app.ui.zoom, native, ppp, app.ui.pan);
     let mut img_rect = animated_rect(ui.ctx(), &mut app.ui.zoom_anim, target_rect);
     let in_pane = |pane: Rect, image: Rect| image.translate(pane.center() - main_area.center());
+    brush_wheel(app, ui, &resp, right);
     let navigating = areas.iter().any(|&view_area| {
         let view_img = in_pane(view_area, img_rect);
         navigate_gesture(app, ui, &resp, view_area, view_img, native) || middle_pan(app, ui, &resp, view_area, view_img)
@@ -536,7 +540,7 @@ fn neighbour_job(
     with_crop: bool,
 ) -> Option<lightcraft_engine::media::RenderJob> {
     let np = app.session.catalog.photo(nid)?;
-    let nf = Frame::with_lens(np.width.max(1) as usize, np.height.max(1) as usize, &np.develop, with_crop, np.embedded_lens.as_ref());
+    let nf = Frame::with_lens(np.width.max(1) as usize, np.height.max(1) as usize, &np.develop, with_crop, np.embedded_lens.as_deref());
     let na = nf.aspect() as f32;
     let nr = fit_rect(main_area, na, app.ui.zoom, output_px(&nf), ppp, app.ui.pan);
     let nw = app.ui.settings.prefetch_edge(nr.width().max(nr.height()) * ppp, output_px(&nf).into_iter().max().unwrap_or(1), texture_side);
@@ -764,6 +768,9 @@ struct ToolView<'a> {
 /// Route the pointer to the right panel's tool on the photo, or to the general interactions.
 fn tool_interaction(app: &mut LightcraftApp, ui: &mut egui::Ui, resp: &egui::Response, tv: &ToolView, v: &Views) {
     let (map, d) = (tv.map, tv.d);
+    if brush_drag(app, ui, resp, tv.right, map) {
+        return;
+    }
     match tv.right {
         RightPanel::Crop => crop_overlay(app, ui, resp, map, tv.frame, d, tv.id),
         RightPanel::Masking => mask_overlay(app, ui, resp, map, d),
