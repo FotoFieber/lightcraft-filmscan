@@ -2,6 +2,31 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-26: trial build 0.21.1+filmscan.12 (not published)
+
+**What**
+- On `trial/upstream-20261126`: upstream `main` at `f778f0e0` (the newest commit with a green CI run at the time)
+  merged (`a05f4193`), version `.12` (`49471700`; the merge's message names it too).
+- 13 files conflicted. Decisions: the app id keeps `LIGHTCRAFT_APP_ID` and the flavor's id, with upstream's channel id
+  for Nightly; presets use upstream's `blend_base`, which includes `to_json_for_merge`; `crop_dims` keeps
+  `negative_zap::oriented_dims` (same result as upstream's new body); the captured import list and "Then Zap!…" are
+  both kept; the Film Scan menu rows sit beside upstream's move of Capture Time and Tracklog to Photo > Metadata.
+- Built with `--features heif` and the pinned craft-fonts, installed as `~/.local/bin/lightcraft-cn`. No .deb, nothing
+  pushed.
+
+**Testing**
+- `cargo xtask ci`: fmt, clippy and heif passed; `test` failed only at the known version test (run just before the
+  version bump). parity, layers, assets, roots, wasm and the 3 `gpu_matches_cpu` tests passed. 170 tests skipped
+  their checks (corpus and models absent).
+- Zap! on the 330 truth crops, single and roll: the same crops as `.11`. `zap_on_real_scans` on the London scans:
+  the same output.
+- London DNGs, Zap! and a 900 px export, `.11` against `.12`: not identical (mean difference below 0.9 levels, up to
+  96 on single pixels, 2 to 20 % of pixels off by more than 2, mostly at edges). They look the same side by side.
+- `lightcraft-cli render` of a DNG with a `.11` sidecar works (mean difference 0.9 levels).
+- Photo > Film Scan has its three commands; the panel view matches `.11`.
+- A copy of a 91,026-photo library opens: upgraded to catalog format 14, the old one kept beside it as
+  `catalog.snap.v13-<seq>`.
+
 ## 2026-11-26: state after local build 0.21.1+filmscan.11 (no release)
 
 **Upstream**
