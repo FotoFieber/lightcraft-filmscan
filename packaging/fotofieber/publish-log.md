@@ -2,6 +2,77 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-26: state after local build 0.21.1+filmscan.11 (no release)
+
+**Upstream**
+- Still v0.21.1 (2026-11-12). `main` moved fast on 2026-11-26: 730 commits (merges included) between `ddc0eef3`, the
+  state merged for `.11`, and `02060784`. The craft-libs pin is unchanged (`b2d2a1e9`).
+- Relevant for us: raw decoding keeps negative channels (#2278) and pushed shadows render differently (#2092); the
+  menus have new `LAYOUT`/`SUBMENUS`/`HIDDEN` tables (#2194); catalog format 13 → 14. Nothing new in `crates/film`
+  or the negative files.
+- #3985 (`2404f941`), #3986 (`a529bdb2`), #3987 (`a9d3c229`): heads unchanged. On 2026-11-25 @smyrgeorge allowed
+  @manueldeprada to push to the branches, so expect movement. #3985 conflicts with `main`.
+- @manueldeprada's `cr-2-pipeline` (`f84a8499`), `cr-3-engine` (`4c800191`), `cr-4-panel` (`bc02c044`): unchanged,
+  already in `filmscan`.
+- #3623 (`b0797a9b`): open, conflicting, no ruling. Our #4504 (Pillow) is still open.
+
+**Compared with `filmscan`**
+- `filmscan` is at `f5924da7`; `.11` is not pushed. The published release is `.10`.
+- Changed line ranges overlap in about 16 places in 13 files, plus `Cargo.lock`.
+
+**Recommendation**
+- No release. Do a trial merge now on its own branch, test it, and install it as a local build.
+
+## 2026-11-24: local build 0.21.1+filmscan.11 (not published)
+
+**What**
+- Merged upstream `main` at `ddc0eef3` (`d022a152`) without conflicts; version `0.21.1+filmscan.11` (`f5924da7`).
+  `Cargo.lock` keeps `rustls-rustcrypto 0.1.0-pre.0` and `rustls-webpki 0.103.16`.
+- Built with `--features heif` and the pinned craft-fonts. No .deb, nothing pushed.
+
+**Testing**
+- `cargo xtask ci`: fmt, clippy and heif passed. `test` failed; a rerun of the workspace tests showed only the known
+  version test. The corpus was mostly absent, so 160 tests skipped their checks.
+- parity, layers, assets, roots and wasm passed one by one (wasm with warnings in `ui-egui`). The GPU equivalence
+  tests (`gpu_matches_cpu` filter, 3 tests) passed.
+- `zap_on_real_scans` found the frame on all 6 London scans. `LC_ZAP_DIR` must be an absolute path: with a relative
+  one the test passes without looking at any scan.
+- London DNGs, `develop.negativeZap` and a 900 px PNG export with the `.10` and `.11` CLI: all 6 byte-identical.
+- Heal on a converted negative (one London scan): GPU and CPU exports differ by at most 1 level. A spot in plain sky
+  looks seamless in `.10` and `.11`. A large spot across hard edges smears in both.
+
+## 2026-11-24: state after v0.21.1-filmscan.10 (no release)
+
+**Upstream**
+- Still v0.21.1 (2026-11-12); `main` is at `ddc0eef3` and still says `0.21.1`. It has 31 commits (without merges)
+  after `94219de0`, the state merged for `.10`: the pinned Heal (process V14, `spots::pinned`, `docs/heal-pinned.md`),
+  Remove/Crop mode dropdowns (`labeled_dropdown`), balanced demosaic on the white-balanced mosaic (#1328, craft-libs
+  `b2d2a1e94`) and app-drop teardown fixes. Nothing in `crates/film`, the negative or Zap! files.
+- Only `crates/gpu/src/render.rs` changes (+8 lines): `spots()` reads the image back and runs the heal on the CPU for
+  V14 photos with spots. Our `lin_needs_cpu_stage` routing sits elsewhere in the file and is not in upstream.
+- #3985 (`2404f941`), #3986 (`a529bdb2`), #3987 (`a9d3c229`): unchanged, open, `CONFLICTING`, no comment or review
+  since the last entry. #3623 (`b0797a9b`): unchanged, `CONFLICTING`, no ruling.
+- @manueldeprada's `cr-2-pipeline` (`f84a8499`), `cr-3-engine` (`4c800191`), `cr-4-panel` (`bc02c044`): unchanged,
+  already in `filmscan`.
+
+**Compared with `filmscan`**
+- `filmscan` is at `64b27887` and equals `fotofieber/filmscan`. The tag `v0.21.1-filmscan.10` is on an earlier
+  commit (the build commit); only log entries came after it. Nothing unpublished apart from this log.
+- A trial merge of `origin/main` (`git merge-tree`) is clean: no conflicts.
+- Series layer, Zap!, roll mode and packaging: no overlap with the upstream changes.
+
+**Risks**
+- Process V14 changes how Heal and Remove spots render for new edits. Our negative step runs before spots, so the
+  conversion is unaffected, but a negative with spots goes through the GPU readback; check one such frame.
+- The demosaic change (#1328) alters raw renders slightly. Compare the London DNGs before and after, as on 2026-11-18,
+  because Convert Negative amplifies small differences.
+- The craft-libs pin moves again, so the build needs the network for the new rev.
+
+**Recommendation**
+- Wait. No new tag, the series is unchanged, and we have nothing new for users since `.10`.
+- Merge `main` when upstream tags the next release (or when we need a fix from it). Expect no conflict now; check
+  `Cargo.lock` for `rustls-rustcrypto 0.1.0-pre.0` afterwards.
+
 ## 2026-11-23: v0.21.1-filmscan.10
 
 - Contents: `.9` plus upstream main `94219de0` (merged without conflicts) and one own change: while the Film Base or
