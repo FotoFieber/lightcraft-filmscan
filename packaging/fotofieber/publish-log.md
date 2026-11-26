@@ -2,6 +2,19 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-26: local build 0.21.1+filmscan.13 (not published)
+
+**What**
+- On `trial/upstream-20261126`: Flip Horizontal and Flip Vertical in the photo context menu (filmstrip, grid, loupe,
+  compare), below the two rotate entries (`a5ae8df7`). Version `.13` (`3cbef880`).
+- Built with `--features heif` and the pinned craft-fonts, installed as `~/.local/bin/lightcraft-cn`.
+
+**Testing**
+- `cargo xtask ci --quick`: fmt, clippy and heif passed; `test` failed only at the known version test. The steps
+  after `test` were not run.
+- Headless snapshot: a right-click on the filmstrip shows both entries; Flip Horizontal mirrors the photo. Flip
+  Vertical was not clicked.
+
 ## 2026-11-26: trial build 0.21.1+filmscan.12 (not published)
 
 **What**
