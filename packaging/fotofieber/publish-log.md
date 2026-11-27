@@ -2,6 +2,41 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-27: local build 0.21.1+filmscan.14 (not published)
+
+**What**
+- The maintainer tested `.13` and found it good: `filmscan` was fast-forwarded to `trial/upstream-20261126`.
+- Merged upstream `main` at `3249d213` (CI green; `f57b8b4e`), version `.14` (`b62bde4d`). 169 commits (90 without
+  merges) after `f778f0e0`: export subfolder variables, the HSL Color Mixer, one mask overlay rule, Upright fixes, a
+  Settings filter, import of photos browsed in Local, window placement, looping smart albums, library paths that differ
+  in letter case.
+- 5 files conflicted, all kept both sides: a test in `tests_geometry.rs`, `de.json`, `de-formats.json`,
+  `slider_named` in `widgets.rs` (upstream's spoken name, else our translation context for the negative sliders) and
+  the parity summary (rewritten with `cargo xtask parity --write`).
+- Catalog format stays 14. `Cargo.lock` keeps `rustls-rustcrypto 0.1.0-pre.0` and `rustls-webpki 0.103.16`.
+- Built with `--features heif` and the pinned craft-fonts, installed as `~/.local/bin/lightcraft-cn`. No .deb, nothing
+  pushed.
+
+**Testing**
+- `cargo xtask ci`: fmt, clippy and heif passed; `test` failed only at the known version test. parity, layers, assets,
+  roots, wasm and the 3 `gpu_matches_cpu` tests passed. 170 tests skipped their checks.
+- Zap! on the 330 truth crops, single and roll: byte-identical to `.13`. `zap_on_real_scans` on the London scans: the
+  same output.
+- London DNGs, Zap! and a 900 px export, `.13` against `.14`: all 6 identical.
+- Headless snapshot: Photo > Film Scan, the Film Scan panel and the two flip entries of the filmstrip's context menu
+  are there.
+
+**Upstream**
+- Still v0.21.1. #3985 (`2404f941`), #3986 (`a529bdb2`), #3987 (`a9d3c229`) and #3623 (`b0797a9b`): heads unchanged,
+  no ruling. @manueldeprada may push to the series' branches since 2026-11-25 and has not yet. Our #4504 is open.
+- Draft #4750 ports the whole UI to the shared Craft framework. If it is merged, our panel, menu rows, Zap! dialog and
+  tool strip button have to be rebuilt.
+- New `.github/workflows/notify-services.yml` runs on release events, in the fork too, where its secret is missing.
+  Disable it there before the next release (needs the maintainer's OK).
+
+**Recommendation**
+- No release now. Try `.14`, then publish it as the successor of `.10`.
+
 ## 2026-11-26: local build 0.21.1+filmscan.13 (not published)
 
 **What**
