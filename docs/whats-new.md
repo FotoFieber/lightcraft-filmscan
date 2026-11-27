@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+### Export subfolder variables
+- The Export dialog's Subfolder field now supports `{album}` (active album name sanitized for filesystem safety, empty outside an album view), `{date}` (batch export date in `YYYYMMDD`, local time), and `{hour}` (batch export time in `HHMM`, local time). An **Insert…** dropdown next to the field inserts tokens at the cursor. Tokens are stored in presets and expanded at export time, so the same preset produces dated subfolders on every use.
 ### Heal meets its surroundings (process 14)
 - A healed spot is now pinned to the photo around its edge: on a gradient (a sky, a shaded wall, a cheek) it no
   longer leaves a faint disc or ring, and a dark line a few pixels or more beyond the spot's edge no longer smudges
@@ -425,6 +427,21 @@
 
 ## 2026-10-25
 
+### Import from Folder… offers the photos you browsed in Local
+- A folder you browsed in Local no longer shows its photos as "In library" and out of reach in the Import review:
+  they are offered, checked, and importing them brings the browsed photos (with their edits) into the library where
+  they are. Copy and Move still leave them out, since they can't be copied from where they already are, and the
+  review says keywords and presets apply to new files only when they are set for such photos.
+- A copy you only browsed in Local (another path with the same content) no longer makes the import report "already in
+  the library", even after the library photo was permanently deleted and the library reopened, and a library photo
+  with the same content is matched before a browsed copy is promoted. Several browsed copies of one file import once.
+- Files with the same content as a browsed photo are listed as identical copies in the folder, not as already in the
+  library, which doesn't have them. With Copy or Move, which leave the browsed photo out, the first of those files
+  that isn't browsed itself is offered and checked instead, so that content can still be copied in from the folder.
+- A browsed file that another application replaced since (its size on disk is no longer the one that was browsed) is
+  read again: it is compared with the library by what it is now, and importing it brings its record up to date (size,
+  dimensions, content) as it joins the library.
+
 ### A one-field white balance edit no longer shifts the other one
 - Settings that name only a white balance temperature, or only a tint — `develop.merge`,
   `lightcraft-cli render --settings <partial JSON>`, an MCP `set_develop {settings: …}` call, or a hand-written
@@ -465,6 +482,22 @@
   a keyword a line; LightCraft now reads it as one keyword a line, and repairs libraries that already hold such a
   keyword when they open. A name with a line break in it is drawn on one line in the sidebar and the Keyword List.
 
+### The mask overlay shows when it helps
+- One rule now decides when a mask's overlay covers the photo: when you switch it on with **O** (or the eye by the
+  Masks title), while the pointer is on one of the mask's parts (the rows under its name) or its pin, or by itself for a mask that
+  has no settings yet, so you see what it selects. The pointer on the mask's own row shows nothing, so its eye
+  switches the effect on and off with nothing over the photo. A mask with settings (its own or a preset's) never shows the overlay by itself, so you can
+  judge its effect: picking, creating, duplicating or adding to such a mask no longer covers the photo. While a
+  slider is at work nothing covers the photo, not even an overlay switched on with O; it comes back when you let go.
+  During a mask drag or a brush stroke, hovering shows no overlay; an overlay switched on with O, or a mask without
+  settings, keeps showing what it selects. While an Object click or a description is still being computed, no stand-in
+  overlay shows.
+### Color Mixer: HSL
+- **Color Mixer: HSL**, laid out as in Lightroom Classic: **Mixer | Point Color** tabs, then
+  **Adjust: HSL / Color**. HSL shows **Hue, Saturation, Luminance** or **All** (the three stacked,
+  each with its heading): eight colour sliders each, with coloured tracks, and a targeted
+  adjustment per group. HSL is the default and your choice is remembered. Point Color is now the
+  Color Mixer's second tab.
 ### Import rename numbering stops safely at its limit
 - Copy and Move imports can use the last representable rename number once. If more renamed files remain, each is
   reported as failed with guidance to lower `renameStart` or leave `rename` blank; completed transfers stay
@@ -500,6 +533,14 @@
   system setting** beside the tick box hands the choice back. On Windows, Linux and the web version it is manual for
   now (off by default). Pinch and scroll zoom were never animated.
 
+### Settings has a filter that finds a section on whatever tab it is
+- Settings has a filter above its tabs. Type a word, or part of one, and the sections that have it are listed with
+  the tab each is on, whichever tab was open: the names of tabs and sections, labels, buttons and explanations
+  are all looked through, and every word typed has to be there. Click a section (or press Return for the first, or ↓
+  to go down to them) and its tab opens at it. Esc empties the filter; a second Esc closes Settings. The choices of a
+  closed list and tooltips are not looked through. Scripts: `field:settingsFilter`, `settingsFound:<tab>:<section>`
+  for each section found, and `heading:<its English name>` for where a section starts, whatever the interface
+  language.
 ### AI Denoise follows the photo's real noise
 - The built-in denoiser used to read a photo's fine texture as noise, so it always believed a photo was at least as noisy as
   about ISO 12800 and over-smoothed quiet photos while under-cleaning noisy ones. It now measures each colour channel
@@ -662,6 +703,18 @@
   white balance.) On a test library of 100,000 photos, 90 % unedited JPEGs, 8 % raws with one as-shot white balance
   and 2 % edited, a photo takes about 2.8 kB where it took 4.4 kB (285 MB instead of 441 MB). Nothing changes on
   screen, and the library's files are byte for byte what they were, so earlier versions open them as before.
+### An album caught in a loop is empty, and says so
+- A smart album that tests another album, which tests it back (or that tests itself), used to show a share of
+  its photos, and which photos depended on the album you asked about. Now every album on such a loop shows no
+  photos, however you look at it: in the grid, in the count beside it in the sidebar, and in an Album rule of
+  another smart album.
+- The empty album says why instead of "No photos": "This album is in a loop, so it shows nothing", then the album it
+  loops through and where to fix it (Edit Smart Album…). The row in the sidebar keeps its ⚠, and hovering it says the
+  same.
+- An album that only tests a looping album is not on the loop: it keeps working, and sees the looping album as empty
+  (so an Album rule set to "isn't" that album matches every photo). Change the rules of one album on the loop and its albums hold
+  their photos again.
+- A library that already holds such a loop opens as before; only what the albums on it show changes.
 ## 2026-10-23
 
 ### AI Denoise works out of the box

@@ -335,6 +335,7 @@
   "{frames} measured as one roll, the film base from {bases}": "{frames} als eine Rolle gemessen, Filmbasis aus {bases}",
   "{apart} with another film base measured on their own": "{apart} mit anderer Filmbasis einzeln gemessen",
   "Roll · {frames} photos": "Rolle · {frames} Fotos",
+  "It leads back to itself through “{}”: change the rules of one album on the loop (Edit Smart Album…)": "Es führt über das Album „{}“ zu sich selbst zurück: Ändere die Regeln eines Albums im Kreis (Smart-Album bearbeiten…)",
   "Add {n} photo{} to “{}”": "{n} Foto{0} zu „{1}“ hinzufügen",
   "{n} already there": "{n} bereits enthalten",
   "Add “{keyword}” to {n} photo{}": "„{keyword}“ zu {n} Foto{} hinzufügen",
