@@ -95,7 +95,9 @@ scanner scans of film become positives inside LightCraft, non-destructively like
 
 - **Photo ▸ Film Scan ▸ Zap!…** finds the frame on the scan, straightens and crops it (35 mm with or without the
   sprocket holes, medium format, slides, or the whole film) and measures the film base on the rebate, for one photo
-  or a whole selection in the background, as one undo step.
+  or a whole selection in the background, as one undo step. It levels the crop by the film's edge or, if you
+  choose, by the scene (like Auto Straighten, within 1° of the film's edge). Thin black-and-white scans with a light
+  leak along one edge are found too.
 - **As One Roll** measures several frames of a roll together, each on its own film base, so the colours of a roll
   stay consistent; **Release** takes a frame out of the roll again.
 - **Photo ▸ Film Scan ▸ Convert Without Cropping** converts without touching the crop.
