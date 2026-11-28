@@ -2,6 +2,27 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-28: local build 0.21.1+filmscan.17 (not published)
+
+**What**
+- Merged upstream `main` at `4d838140` (CI green; `f5451ed3`), version `.17` (`373da748`). 143 commits (59 without
+  merges) after `3249d213`: AI Defringe, Select by single rating, hiding all panels, Space opens a photo, the crop's
+  size in pixels, import and face fixes, window, GPU and Flatpak fixes.
+- 2 files conflicted, both sides kept: `to_json_for_merge` in `crates/develop/src/lib.rs` (our `negative`, upstream's
+  AI Defringe fields) and a row of the parity checklist's history.
+- Catalog format stays 14, `Cargo.lock` keeps the two rustls versions.
+- Installed as `~/.local/bin/lightcraft-cn`. No .deb, nothing pushed.
+
+**Testing**
+- `cargo xtask ci`: only the known version test failed (170 tests skipped their checks). parity, layers, assets, roots,
+  wasm and `gpu_matches_cpu` passed.
+- Zap! on the 355 truth crops, single and roll: byte-identical to `.16`.
+- London DNGs, Zap! and a 900 px export: identical to `.14`.
+- Headless screenshot of a zapped scan and the German panel.
+
+**Upstream**
+- Still v0.21.1. #3985-#3987, #3623 and #4504 unchanged; draft #4750 (UI on the Craft framework) still conflicting.
+
 ## 2026-11-28: local build 0.21.1+filmscan.16 (not published)
 
 **What**
