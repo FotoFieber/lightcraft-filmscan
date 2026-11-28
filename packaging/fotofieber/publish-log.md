@@ -2,6 +2,33 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-28: local build 0.21.1+filmscan.15 (not published)
+
+**Problem**
+- On the roll 202508BW (25 B&W 35 mm camera scans, copied without sidecars to `corpus/zap-202508BW/`), Zap! in `.14`
+  found no frame on 14 scans and cropped the other 11 to the lower part of the picture.
+- Cause: film counts as film above 8 % of the light through the holes. These scans are thin and fogged along one edge
+  (a light leak): 0.03 to 0.12 on the fogged rebate, 0.17 to 0.56 on the other, a median of 0.05 to 0.10 in the
+  picture, 0.0003 on the holder. So the denser film passed for holder.
+
+**What**
+- `c7a7ce9f`: where no frame, or only one row of holes, is found, `detect` looks again for film down to 2 % and takes
+  that when it shows a larger strip with both rows. There the holes are read against their own light, the base is the
+  thinner rebate of the two rows, the long sides go just inside the holes and light past the film's end is trimmed.
+  New synthetic test. Version `.15` (`001788a2`), installed as `~/.local/bin/lightcraft-cn`. No .deb, nothing pushed.
+
+**Testing**
+- 202508BW: a frame on 25 of 25, checked on contact sheets. No crop truth for this roll yet.
+- 330 truth crops, single and roll: within 1/2/4 % unchanged. Only the GS1 135 sprocket folder changed (4 photos that
+  were not zapped now are; 5 better and 1 worse by more than 0.5 %, the worse one in roll mode, beyond 4 % both times).
+- London scans: the same output.
+- As one roll, the 25 scans convert darker and richer than each on its own.
+- `cargo xtask ci`: only the known version test failed; parity, layers, assets, roots, wasm and `gpu_matches_cpu`
+  passed.
+
+**Open**
+- The maintainer's crops for 202508BW, then add them to the truth file.
+
 ## 2026-11-27: local build 0.21.1+filmscan.14 (not published)
 
 **What**
