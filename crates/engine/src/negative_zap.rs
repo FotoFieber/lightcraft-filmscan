@@ -6,6 +6,7 @@
 use lightcraft_catalog::{Photo, PhotoId};
 use lightcraft_develop::{DevelopSettings, NegativeMeasurement};
 use lightcraft_geom::{CropGeometry, MIN_CROP_FRACTION, Orientation, Rect};
+use lightcraft_pipeline::SourceInfo;
 use lightcraft_pipeline::negative::film::ValueHistogram;
 use lightcraft_pipeline::negative_frame::{self, Frame, Margin};
 use lightcraft_raster::Rgb32f;
@@ -31,6 +32,21 @@ pub enum Sprockets {
     Keep,
 }
 
+/// What the crop is straightened by.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Straighten {
+    /// The film's edge in the holder.
+    #[default]
+    Frame,
+    /// The scene's horizon or plumb lines, as Auto Straighten reads them, where they agree with
+    /// the film's edge to within [`SCENE_MAX_TURN`]; else the film's edge.
+    Scene,
+}
+
+/// Most degrees the scene's level may differ from the film's edge and still straighten the crop:
+/// further off, the lines found are the picture's slant, not the camera's.
+pub const SCENE_MAX_TURN: f64 = 1.0;
+
 /// What was scanned.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Film {
@@ -51,8 +67,8 @@ pub const MONOCHROME: &str = "Monochrome";
 /// The film profile a colour negative falls back to when it had a monochrome one.
 const STANDARD: &str = "Standard";
 
-/// Where the crop sits, the film format, the sprocket holes and the kind of film, the same for
-/// every photo of a run.
+/// Where the crop sits, the film format, the sprocket holes, the kind of film and what to
+/// straighten by, the same for every photo of a run.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Options {
     pub margin: Margin,
@@ -60,13 +76,14 @@ pub struct Options {
     pub ratio: Option<f64>,
     pub sprockets: Sprockets,
     pub film: Film,
+    pub straighten: Straighten,
     /// The photos are one roll: their negatives are measured together ([`pool`]).
     pub roll: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative, roll: false }
+        Self { margin: Margin::Inside, ratio: None, sprockets: Sprockets::Remove, film: Film::Negative, straighten: Straighten::Frame, roll: false }
     }
 }
 
@@ -96,12 +113,18 @@ impl Options {
             Some(Value::String(v)) if v == "slide" => Film::Slide,
             Some(v) => return Err(format!("`film` must be negative, bw or slide, not {v}")),
         };
+        let straighten = match p.get("straighten") {
+            None | Some(Value::Null) => Straighten::Frame,
+            Some(Value::String(v)) if v == "frame" => Straighten::Frame,
+            Some(Value::String(v)) if v == "scene" => Straighten::Scene,
+            Some(v) => return Err(format!("`straighten` must be frame or scene, not {v}")),
+        };
         let roll = match p.get("roll") {
             None | Some(Value::Null) => false,
             Some(Value::Bool(b)) => *b,
             Some(v) => return Err(format!("`roll` must be true or false, not {v}")),
         };
-        Ok(Self { margin, ratio, sprockets, film, roll })
+        Ok(Self { margin, ratio, sprockets, film, straighten, roll })
     }
 }
 
@@ -109,7 +132,7 @@ impl Options {
 #[derive(Clone, Debug)]
 pub struct Zapped {
     pub settings: DevelopSettings,
-    /// `{angle, rect, base, sprockets, sidesFound}`.
+    /// `{angle, straightened, rect, base, sprockets, sidesFound, picture, holes, cropKept}`.
     pub report: Value,
     /// For a roll ([`Options::roll`]): the samples its measurement read, for [`pool`].
     pub samples: Option<Box<RollSamples>>,
@@ -165,7 +188,7 @@ pub fn unzap(before: &DevelopSettings) -> Option<DevelopSettings> {
 /// oriented size `dims`. A crop of the user's own ([`own_crop`]) stays as it is: Zap! then only
 /// takes the film base and measures the picture (inside that crop when no frame is found). A
 /// slide is only cropped.
-pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options) -> Result<Zapped, String> {
+pub fn zap(scan: &Rgb32f, info: &SourceInfo, before: &DevelopSettings, dims: (f64, f64), o: Options) -> Result<Zapped, String> {
     let oriented = scan.oriented(before.orientation);
     let (ow, oh) = (oriented.width as f64, oriented.height as f64);
     let found = match o.film {
@@ -176,7 +199,9 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
     // measured on the picture itself (inside its edge, never the holes or the rebate)
     let picture = |f: &Frame| Frame { holes: [None, None], ..*f }.crop(Margin::Inside, ow, oh);
     if o.film == Film::Slide {
-        return slide(before, found, dims, o, (ow, oh));
+        let mut z = slide(before, found, dims, o, (ow, oh))?;
+        straighten(&mut z, scan, info, before, dims, o);
+        return Ok(z);
     }
     // the picture as the crop shows it: in the frame turned by the frame's angle
     let picture_of = |f: &Frame| CropGeometry { rect: picture(f), angle: f.angle };
@@ -197,7 +222,33 @@ pub fn zap(scan: &Rgb32f, before: &DevelopSettings, dims: (f64, f64), o: Options
     let mut settings = converted(before, o.film, measured, frame.base);
     settings.crop.geometry = geometry;
     settings.negative.zap_crop = Some(geometry);
-    Ok(Zapped { settings, report: report(&geometry, Some(&frame), false), samples })
+    let mut z = Zapped { settings, report: report(&geometry, Some(&frame), false), samples };
+    straighten(&mut z, scan, info, before, dims, o);
+    Ok(z)
+}
+
+/// With [`Straighten::Scene`], turns the crop Zap! set in `z` to the scene's level. The frame and
+/// what was measured on it stay; a crop of the user's own isn't turned.
+fn straighten(z: &mut Zapped, scan: &Rgb32f, info: &SourceInfo, before: &DevelopSettings, dims: (f64, f64), o: Options) {
+    if o.straighten != Straighten::Scene || own_crop(before) {
+        return;
+    }
+    let frame = z.settings.crop.geometry;
+    let Some(level) = lightcraft_pipeline::upright::level_degrees(scan, info, before) else { return };
+    // (to a hundredth of a degree, as Auto Straighten sets it)
+    let level = (level * 100.0).round() / 100.0;
+    if !level.is_finite() || (level - frame.angle).abs() > SCENE_MAX_TURN {
+        return;
+    }
+    let geometry = frame.with_angle(level, dims.0, dims.1);
+    z.settings.crop.geometry = geometry;
+    z.settings.negative.zap_crop = Some(geometry);
+    if let Some(r) = z.report.as_object_mut() {
+        let rect = geometry.rect;
+        r.insert("angle".into(), json!(geometry.angle));
+        r.insert("rect".into(), json!([rect.x0, rect.y0, rect.x1, rect.y1]));
+        r.insert("straightened".into(), json!("scene"));
+    }
 }
 
 /// [`measure_in`] and, for a roll's frame (`roll`), the samples a roll's measurement reads there
@@ -270,11 +321,12 @@ fn converted(before: &DevelopSettings, film: Film, measured: NegativeMeasurement
     settings
 }
 
-/// What Zap! did: `{angle, rect, base, sprockets, sidesFound, picture, holes, cropKept}`.
+/// What Zap! did: `{angle, straightened, rect, base, sprockets, sidesFound, picture, holes, cropKept}`.
 fn report(geometry: &CropGeometry, frame: Option<&Frame>, kept: bool) -> Value {
     let r = |r: Rect| json!([r.x0, r.y0, r.x1, r.y1]);
     json!({
         "angle": geometry.angle,
+        "straightened": "frame",
         "rect": r(geometry.rect),
         "base": frame.and_then(|f| f.base),
         "sprockets": frame.is_some_and(|f| f.sprockets),
@@ -299,7 +351,7 @@ fn framed(scan: &Rgb32f, d: &DevelopSettings, g: CropGeometry) -> Rgb32f {
     if g.angle.is_finite() && g.angle != 0.0 {
         let mut d = d.clone();
         d.crop.geometry = g;
-        let frame = lightcraft_pipeline::frame_for(scan, &lightcraft_pipeline::SourceInfo::default(), &d, true);
+        let frame = lightcraft_pipeline::frame_for(scan, &SourceInfo::default(), &d, true);
         let r = frame.crop.rect_px(frame.ow, frame.oh);
         // (a NaN side rounds to 0 and so becomes 1)
         let side = |v: f64| (v.round() as usize).clamp(1, 16384);
@@ -588,7 +640,10 @@ impl Input {
     /// [`Self::run`], with what the decoder said about the scan (`None` when it could not be read).
     pub fn run_with_info(&self, o: Options) -> (Result<Zapped, String>, Option<lightcraft_pipeline::SourceInfo>) {
         match self.source.load_source() {
-            Ok(source) => (zap(&source.image, &self.settings, self.dims, o), source.info.clone()),
+            Ok(source) => {
+                let info = source.info.clone().unwrap_or_default();
+                (zap(&source.image, &info, &self.settings, self.dims, o), source.info.clone())
+            }
             Err(e) => (Err(e), None),
         }
     }

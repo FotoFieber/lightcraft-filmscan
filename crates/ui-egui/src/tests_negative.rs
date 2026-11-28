@@ -62,6 +62,7 @@ fn zap_crops_to_the_frame_with_the_panels_choices_and_undoes_in_one_step() {
         "dropdown:negative-zapMargin",
         "dropdown:negative-zapFormat",
         "dropdown:negative-zapSprockets",
+        "dropdown:negative-zapStraighten",
         "dropdown:negative-zapFilm",
     ] {
         assert!(h.app.widgets.iter().any(|(id, _)| id == w), "{w} on the panel");
@@ -121,7 +122,13 @@ fn photo_zap_asks_for_its_choices_and_runs_with_them() {
         panic!("the Zap! dialog: {:?}", h.app.ui.dialog)
     };
     assert_eq!((film.as_str(), format.as_str(), sprockets.as_str(), margin.as_str()), ("negative", "35mm", "remove", "inside"));
-    for w in ["dropdown:negativeZap-film", "dropdown:negativeZap-format", "dropdown:negativeZap-sprockets", "dropdown:negativeZap-margin"] {
+    for w in [
+        "dropdown:negativeZap-film",
+        "dropdown:negativeZap-format",
+        "dropdown:negativeZap-sprockets",
+        "dropdown:negativeZap-margin",
+        "dropdown:negativeZap-straighten",
+    ] {
         assert!(h.app.widgets.iter().any(|(id, _)| id == w), "{w} in the dialog");
     }
     assert!(!h.app.widgets.iter().any(|(id, _)| id == "dropdown:negativeZap-roll"), "one photo is no roll");

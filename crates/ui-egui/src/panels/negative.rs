@@ -50,6 +50,10 @@ pub(crate) const MARGINS: [(&str, &str); 4] =
 pub(crate) const SPROCKETS: [(&str, &str); 2] = [("remove", "Remove Sprocket Holes"), ("keep", "Keep Sprocket Holes")];
 /// Zap!… on several photos: each measured on its own, or all together as one roll.
 pub(crate) const ROLLS: [(&str, &str); 2] = [("single", "Each Photo on Its Own"), ("roll", "As One Roll")];
+/// What Zap! straightens by, as `develop.negativeZap` takes it.
+pub(crate) const STRAIGHTENS: [(&str, &str); 2] = [("frame", "Level by the Film Edge"), ("scene", "Level by the Scene")];
+/// The tooltip of [`STRAIGHTENS`].
+pub(crate) const STRAIGHTEN_TIP: &str = "Level the crop by the film's edge, or by the horizon or upright lines in the picture (as Auto Straighten does) when they differ from the film's edge by no more than 1°";
 /// What was scanned, as `develop.negativeZap` takes it.
 pub(crate) const FILMS: [(&str, &str); 3] = [("negative", "Negative"), ("bw", "B&W Negative"), ("slide", "Slide")];
 const WBS: [(&str, &str); 4] = [("as_is", "As Shot"), ("warm", "Warm"), ("cool", "Cool"), ("tungsten_film", "Tungsten Film")];
@@ -162,7 +166,7 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
             let tip = "Find the frame on the scan, straighten and crop to it and pick the film base. A crop of your own stays";
             if text_button(ui, "negative-zap", "Zap!", false).on_hover_text(tr(tip)).clicked() {
                 let u = &app.ui;
-                let p = json!({"margin": u.negative_zap_margin, "format": u.negative_zap_format, "sprockets": u.negative_zap_sprockets, "film": u.negative_zap_film});
+                let p = json!({"margin": u.negative_zap_margin, "format": u.negative_zap_format, "sprockets": u.negative_zap_sprockets, "film": u.negative_zap_film, "straighten": u.negative_zap_straighten});
                 if let Err(e) = app.run("develop.negativeZap", p) {
                     app.toast(ui.ctx(), e);
                 }
@@ -180,6 +184,7 @@ fn zap_row(app: &mut LightcraftApp, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             let tip = "Whether the crop keeps 35 mm film's sprocket holes";
             zap_choice(ui, "negative-zapSprockets", tip, &mut app.ui.negative_zap_sprockets, &SPROCKETS);
+            zap_choice(ui, "negative-zapStraighten", STRAIGHTEN_TIP, &mut app.ui.negative_zap_straighten, &STRAIGHTENS);
             zap_choice(ui, "negative-zapFilm", "A black-and-white negative converts in grey, its film base taken from the rebate (a coloured one too, as on XP2); a slide is only cropped, never converted", &mut app.ui.negative_zap_film, &FILMS);
         });
     });
@@ -197,7 +202,7 @@ fn roll_row(app: &mut LightcraftApp, ui: &mut egui::Ui, id: PhotoId, frames: u32
             let tip = "Measure this photo on its own again";
             if text_button(ui, "negative-rollRelease", tr("Release"), false).on_hover_text(tr(tip)).clicked() {
                 let u = &app.ui;
-                let p = json!({"ids": [id.0], "margin": u.negative_zap_margin, "format": u.negative_zap_format, "sprockets": u.negative_zap_sprockets, "film": "negative"});
+                let p = json!({"ids": [id.0], "margin": u.negative_zap_margin, "format": u.negative_zap_format, "sprockets": u.negative_zap_sprockets, "film": "negative", "straighten": u.negative_zap_straighten});
                 if let Err(e) = app.run("develop.negativeZap", p) {
                     app.toast(ui.ctx(), e);
                 }

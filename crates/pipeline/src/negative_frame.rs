@@ -115,6 +115,9 @@ const GAP_TRIM: f64 = 0.03;
 const GAP_COST: f64 = 0.05;
 /// The crop's distance from the sprocket holes (fraction of the film's extent across).
 const HOLE_MARGIN: f64 = 0.015;
+/// The picture's distance from the holes' inner edges where they place its long sides (a thin,
+/// fogged scan), before the crop's own margin.
+const THIN_HOLE_MARGIN: f64 = 0.009;
 
 /// How the crop sits on the picture's edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -318,7 +321,7 @@ fn detect_at(src: &Rgb32f, ratio: Option<f64>, thin: bool) -> Result<Frame, Stri
     let (mut picture, sides_found) = choose(&cands, film, ratio).ok_or("no film frame found")?;
     if thin && let [Some(near), Some(far)] = holes {
         // a fogged rebate passes for picture: the long sides go just inside the holes
-        let gap = ((if along_x { film.height() } else { film.width() }) as f64 * HOLE_MARGIN).round() as usize;
+        let gap = ((if along_x { film.height() } else { film.width() }) as f64 * THIN_HOLE_MARGIN).round() as usize;
         let (a, b) = (near.inner + gap, far.inner.saturating_sub(gap));
         if a < b {
             picture = if along_x { Px { y0: a, y1: b, ..picture } } else { Px { x0: a, x1: b, ..picture } };

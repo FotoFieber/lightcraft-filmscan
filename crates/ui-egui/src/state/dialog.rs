@@ -105,6 +105,8 @@ pub enum Dialog {
         format: String,
         sprockets: String,
         margin: String,
+        /// "frame" or "scene": what the crop is straightened by.
+        straighten: String,
         /// "single" or "roll" (several photos measured together).
         roll: String,
     },

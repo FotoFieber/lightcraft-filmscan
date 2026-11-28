@@ -290,11 +290,13 @@ pub struct UiState {
     /// Convert Negative's Zap!: where the crop sits on the picture's edge ("inside" | "edge" |
     /// "border", or "film": the whole film), the film format that places a side the scan doesn't show
     /// (`lightcraft_pipeline::negative_frame::FORMATS`), whether the crop keeps 35 mm's sprocket
-    /// holes ("remove" | "keep") and what was scanned ("negative" | "bw" | "slide").
+    /// holes ("remove" | "keep"), what was scanned ("negative" | "bw" | "slide") and what the
+    /// crop is straightened by ("frame" | "scene").
     pub negative_zap_margin: String,
     pub negative_zap_format: String,
     pub negative_zap_sprockets: String,
     pub negative_zap_film: String,
+    pub negative_zap_straighten: String,
     /// Photo ▸ Film Scan ▸ Zap!… on several photos: "single" measures each on its own, "roll" measures them
     /// together as one roll.
     pub negative_zap_roll: String,
@@ -652,6 +654,7 @@ impl Default for UiState {
             negative_zap_format: "auto".into(),
             negative_zap_sprockets: "remove".into(),
             negative_zap_film: "negative".into(),
+            negative_zap_straighten: "frame".into(),
             negative_zap_roll: "single".into(),
             tool: String::new(),
             selected_guide: None,

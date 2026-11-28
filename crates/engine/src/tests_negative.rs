@@ -79,6 +79,65 @@ fn zap_straightens_crops_and_picks_the_base_in_one_undo_step() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A scan of a frame in a holder turned by 1°, its picture's upright stripes `tilt` degrees off
+/// the holder: the lines a scene's level is read from.
+fn striped_scan(dir: &std::path::Path, tilt: f64) -> std::path::PathBuf {
+    let (w, h) = (900usize, 600usize);
+    let centre = lightcraft_geom::Point::new(w as f64 / 2.0, h as f64 / 2.0);
+    let holder = lightcraft_geom::Affine::rotate_about(1.0f64.to_radians(), centre);
+    let scene = lightcraft_geom::Affine::rotate_about(tilt.to_radians(), centre);
+    let img = lightcraft_raster::Rgb32f::from_fn(w, h, |x, y| {
+        let q = holder.apply(lightcraft_geom::Point::new(x as f64 + 0.5, y as f64 + 0.5));
+        if !(60.0..840.0).contains(&q.x) || !(40.0..560.0).contains(&q.y) {
+            return [0.004, 0.003, 0.003];
+        }
+        let hole = |cy: f64| ((q.x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (q.y - cy).powi(2) / 196.0 < 1.0;
+        if hole(38.0) || hole(542.0) {
+            return [0.92, 0.93, 0.97];
+        }
+        let base = [0.62, 0.26, 0.07];
+        if !(120.0..780.0).contains(&q.x) || !(80.0..520.0).contains(&q.y) {
+            return base;
+        }
+        let t = if (scene.apply(q).x / 30.0) as i64 % 2 == 0 { 0.15 } else { 0.55 };
+        base.map(|c| c * t)
+    });
+    let png = lightcraft_codecs::encode::encode_png(&lightcraft_codecs::encode::EncodeImage::rgba8(&img.to_srgb8()), &Default::default()).unwrap();
+    let path = dir.join(format!("striped-{tilt}.png"));
+    std::fs::write(&path, png).unwrap();
+    path
+}
+
+/// Zap! levels by the film's edge unless asked for the scene, and keeps to the edge when the
+/// scene's lines run far off it (a slant in the picture, not the camera's).
+#[test]
+fn zap_straightens_by_the_scene_when_asked_and_close_to_the_film_edge() {
+    let dir = std::env::temp_dir().join(format!("lc-zap-scene-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let zapped = |tilt: f64, straighten: &str| {
+        let mut s = Session::new().with_fs();
+        s.execute("library.import", &json!({"paths": [striped_scan(&dir, tilt).to_string_lossy()]})).unwrap();
+        let id = s.active().unwrap();
+        let r = s.execute("develop.negativeZap", &json!({"straighten": straighten})).unwrap();
+        let d = s.develop_of(id).unwrap();
+        assert_eq!(d.negative.zap_crop, Some(d.crop.geometry), "still Zap!'s crop: {r}");
+        (d.crop.geometry.angle, r["zap"]["straightened"].clone())
+    };
+    let (edge, by) = zapped(0.6, "frame");
+    assert_eq!(by, "frame");
+    assert!((edge - 1.0).abs() < 0.2, "{edge}");
+    let (level, by) = zapped(0.6, "scene");
+    assert_eq!(by, "scene");
+    assert!((level - edge).abs() > 0.35, "turned to the scene's lines: {level} vs {edge}");
+    let (far, by) = zapped(3.0, "scene");
+    assert_eq!(by, "frame");
+    assert!((far - edge).abs() < 0.2, "{far} vs {edge}");
+    let mut s = Session::new().with_fs();
+    s.execute("library.import", &json!({"paths": [striped_scan(&dir, 0.0).to_string_lossy()]})).unwrap();
+    assert!(s.execute("develop.negativeZap", &json!({"straighten": "horizon"})).is_err());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// Zap! measures a turned frame straightened, as the render shows it and as Measure Again reads
 /// the crop: the box of the scan under a turned crop would take in rebate at its corners.
 #[test]
