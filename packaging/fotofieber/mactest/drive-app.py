@@ -3,11 +3,13 @@
 
     drive-app.py <port> <out>
 
-Writes <out>/replies.jsonl and <out>/*.png (see docs/control-protocol.md). Exits with 1 when a
+Writes <out>/replies.jsonl, <out>/inspect.json and <out>/*.png (see docs/control-protocol.md). Exits with 1 when a
 request fails.
 """
 import json
+import shutil
 import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -89,6 +91,10 @@ shot("3-detail")
 state = request("ui.inspect") or {}
 print(json.dumps({k: (state.get("perf") or {}).get(k) for k in ("gpu", "gpuReason", "gpuFallback", "mainOnGpu", "fps")}))
 (out / "inspect.json").write_text(json.dumps(state, indent=2))
+# On a Mac also the whole screen, with the menu bar, while the app is still open.
+if shutil.which("screencapture"):
+    if subprocess.run(["screencapture", "-x", str(out / "screen.png")], check=False).returncode:
+        print("note: no picture of the whole screen")
 request("app.quit")
 if failures:
     print("\n".join(failures))

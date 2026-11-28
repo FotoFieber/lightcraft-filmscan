@@ -227,5 +227,7 @@ jobs:
         if: always()
         with:
           name: tests-log-${{ inputs.runner }}
-          path: ${{ runner.temp }}/tests.log
+          path: |
+            ${{ runner.temp }}/tests.log
+            ${{ runner.temp }}/skips.jsonl
           if-no-files-found: warn

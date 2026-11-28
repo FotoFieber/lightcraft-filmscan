@@ -61,7 +61,6 @@ check "Zap! and export on the GPU" env LIGHTCRAFT_CONFIG_DIR="$work/cli-config" 
 "$bin" --no-demo --control "$port" "$out"/scans/*.png >"$out/app.log" 2>&1 &
 pid=$!
 check "app answers on its control port and converts the scans" python3 -I "$here/drive-app.py" "$port" "$out/app"
-screencapture -x "$out/app/screen.png" >>"$out/checks.log" 2>&1 || say "- note: no picture of the whole screen"
 for _ in $(seq 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
 if kill -0 "$pid" 2>/dev/null; then
   say "- **fail**: the app did not quit" && failed=1
