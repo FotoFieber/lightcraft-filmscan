@@ -1,0 +1,231 @@
+# Test LightCraft Film Scan on macOS (the FotoFieber fork only). Fork-only: it never goes upstream.
+# Started by hand; it publishes nothing. It tests the ZIPs of a release, or of a run of
+# fotofieber-build.yml before releasing:
+#
+#   gh workflow run fotofieber-mactest.yml -R FotoFieber/lightcraft-filmscan --ref filmscan
+#   gh workflow run fotofieber-mactest.yml … -f tag=v0.21.1-filmscan.17
+#   gh workflow run fotofieber-mactest.yml … -f build_run=<run id>
+#
+# The scripts are in packaging/fotofieber/mactest/ and use synthetic negatives. Screenshots, exports
+# and logs are the run's artifacts; the summary page has the results.
+name: Film Scan macOS test
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to test (empty = the latest release)
+        type: string
+        default: ""
+      build_run:
+        description: Or the run id of a "Film Scan builds" run to test
+        type: string
+        default: ""
+      runner:
+        description: Mac to test on
+        type: choice
+        options: [macos-15, macos-15-intel]
+        default: macos-15
+      tests:
+        description: Also run the Rust tests on the Mac
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: fotofieber-mactest-${{ github.ref }}-${{ inputs.runner }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # Which packages, and which source they were built from.
+  select:
+    name: Select the version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      ref: ${{ steps.pick.outputs.ref }}
+    steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: |
+          if [[ -n "$BUILD_RUN" ]]; then
+            [[ "$BUILD_RUN" =~ ^[0-9]+$ ]] || { echo "build_run must be a number" >&2; exit 1; }
+            ref="$(gh run view "$BUILD_RUN" -R "$GITHUB_REPOSITORY" --json headSha -q .headSha)"
+            tag=""
+          else
+            tag="${TAG:-$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName)}"
+            [[ "$tag" =~ ^v[0-9A-Za-z.+-]+$ ]] || { echo "unexpected tag: $tag" >&2; exit 1; }
+            ref="refs/tags/$tag"
+          fi
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "ref=$ref" >>"$GITHUB_OUTPUT"
+          echo "Testing ${tag:-the build of run $BUILD_RUN} ($ref)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # What the same version renders on Linux, to compare the Mac's exports with.
+  linux:
+    name: Linux reference
+    needs: select
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Take the command-line tool from the release's .deb
+        if: needs.select.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.select.outputs.tag }}
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p '*-linux-x86_64.deb' -D "$RUNNER_TEMP/deb"
+          dpkg-deb -x "$RUNNER_TEMP"/deb/*.deb "$RUNNER_TEMP/root"
+          echo "CLI=$RUNNER_TEMP/root/usr/lib/lightcraft-filmscan/lightcraft-cli" >>"$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.select.outputs.tag == ''
+        with:
+          ref: ${{ needs.select.outputs.ref }}
+          path: src
+          persist-credentials: false
+      - uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
+        if: needs.select.outputs.tag == ''
+        with:
+          toolchain: stable
+      - name: Build the command-line tool (a build run has no .deb)
+        if: needs.select.outputs.tag == ''
+        working-directory: src
+        run: |
+          ROOT="$PWD"
+          . packaging/fonts.sh
+          prepare_fonts
+          cargo build --release --locked -p lightcraft-cli --features heif
+          echo "CLI=$ROOT/target/release/lightcraft-cli" >>"$GITHUB_ENV"
+      - name: Convert the test negatives
+        env:
+          LIGHTCRAFT_CONFIG_DIR: ${{ runner.temp }}/config
+          LIGHTCRAFT_GPU: "0"
+        run: |
+          python3 -I packaging/fotofieber/mactest/make-negative.py "$RUNNER_TEMP/scans"
+          packaging/fotofieber/mactest/convert.sh "$CLI" "$RUNNER_TEMP/scans" "$RUNNER_TEMP/linux"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mactest-linux
+          path: ${{ runner.temp }}/linux
+          if-no-files-found: error
+
+  app:
+    name: App on ${{ inputs.runner }}
+    needs: select
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download the packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.select.outputs.tag }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: |
+          if [[ -n "$TAG" ]]; then
+            gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p '*-macos-universal.zip' -D "$RUNNER_TEMP/zips"
+          else
+            gh run download "$BUILD_RUN" -R "$GITHUB_REPOSITORY" -n filmscan-macos -D "$RUNNER_TEMP/zips"
+          fi
+      - name: Test the app
+        run: packaging/fotofieber/mactest/test-app.sh "$RUNNER_TEMP/zips" "$RUNNER_TEMP/mac"
+      - name: Summary
+        if: always()
+        run: cat "$RUNNER_TEMP/mac/summary.md" >>"$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mactest-${{ inputs.runner }}
+          path: ${{ runner.temp }}/mac
+          if-no-files-found: warn
+
+  compare:
+    name: Compare with Linux
+    needs: [linux, app]
+    # Also after a failed app test, if it got as far as exporting.
+    if: ${{ !cancelled() && needs.linux.result == 'success' && needs.app.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: mactest-*
+          path: ${{ runner.temp }}/results
+      - name: Compare the exports
+        env:
+          RUNNER_NAME_TESTED: ${{ inputs.runner }}
+        run: |
+          r="$RUNNER_TEMP/results"
+          status=0
+          for kind in cpu gpu; do
+            python3 -I packaging/fotofieber/mactest/compare-png.py "$r/mactest-linux" \
+              "$r/mactest-$RUNNER_NAME_TESTED/cli-$kind" --label "Linux CPU / Mac ${kind^^}" |
+              tee -a "$GITHUB_STEP_SUMMARY" || status=1
+          done
+          exit "$status"
+
+  tests:
+    name: Rust tests on ${{ inputs.runner }}
+    needs: select
+    if: inputs.tests
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 120
+    env:
+      # Smaller and quicker test builds: the runners' disks are small.
+      CARGO_PROFILE_DEV_DEBUG: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.select.outputs.ref }}
+          persist-credentials: false
+      - uses: step-security/dtolnay-rust-toolchain@8dd607977d06adf4ed49b190381e74c17a9dd25f # v1.0.0
+        with:
+          toolchain: stable
+      - name: Test
+        run: |
+          ROOT="$PWD"
+          . packaging/fonts.sh
+          prepare_fonts
+          export LIGHTCRAFT_SKIP_LOG="$RUNNER_TEMP/skips.jsonl"
+          cargo test --locked --no-fail-fast -p lightcraft-film -p lightcraft-pipeline \
+            -p lightcraft-gpu -p lightcraft-engine -p lightcraft-ui-egui 2>&1 | tee "$RUNNER_TEMP/tests.log"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Rust tests on the Mac"
+            echo '```'
+            grep -E '^test result|FAILED|panicked|GPU equivalence tests on' "$RUNNER_TEMP/tests.log" || echo "no test results"
+            echo '```'
+            if [[ -s "$RUNNER_TEMP/skips.jsonl" ]]; then
+              echo "Skipped, by need and reason:"
+              echo '```'
+              sed -E 's/.*"need":"([^"]*)","reason":"(([^"\\]|\\.)*)".*/\1: \2/' "$RUNNER_TEMP/skips.jsonl" | sort | uniq -c
+              echo '```'
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: tests-log-${{ inputs.runner }}
+          path: ${{ runner.temp }}/tests.log
+          if-no-files-found: warn

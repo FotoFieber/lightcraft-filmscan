@@ -67,9 +67,9 @@ Write a log entry with:
 Then follow the steps below.
 
 **What a change after the build costs.** `publish.sh` only publishes packages built from the source being tagged,
-apart from three paths that reach no package: `packaging/fotofieber/` (this tooling and the release notes, but not
+apart from paths that reach no package: `packaging/fotofieber/` (this tooling and the release notes, but not
 `README-package.md`),
-`.github/workflows/fotofieber-build.yml` and `README.md`. The packages carry `packaging/fotofieber/README-package.md`
+`.github/workflows/fotofieber-build.yml`, `fotofieber-mactest.yml` beside it and `README.md`. The packages carry `packaging/fotofieber/README-package.md`
 as their README, a short install guide without version numbers or test results. So:
 - `README.md`, the notes and the tooling can change after the build without a rebuild;
 - `README-package.md` is in the packages: when you change it, build again (the check covers it);
@@ -96,6 +96,12 @@ tags or pushes anything.
    user's decision. Film Scan builds of these two get their own settings folder, library and app id through
    `LIGHTCRAFT_FILMSCAN=1` (`crates/engine/src/flavor.rs`), because they have no launcher script.
 7. Optionally, take screenshots: `screenshots.sh`.
+   To test the macOS ZIPs before publishing, run `.github/workflows/fotofieber-mactest.yml` on that build:
+   `gh workflow run fotofieber-mactest.yml -R FotoFieber/lightcraft-filmscan --ref filmscan -f build_run=<run id>`
+   (`-f tag=<tag>` tests a published release). It starts the app on a GitHub Mac (`runner`: Apple silicon or
+   Intel), converts synthetic negatives, compares the exports with Linux and runs the Rust tests; read the run's
+   summary and look at the screenshots in its artifacts. It does not cover real use, speed on a real graphics
+   chip or Gatekeeper's first-open dialog.
 8. Write the notes with `release-notes.sh <tag> > dist/fotofieber/notes.md`. Credit every source by hand: upstream, @smyrgeorge, the review helpers, us, and ideas from #3623. Add a sentence for users. Update what the maintainer has tried (`tested=` in `release-notes.sh`).
 9. **Get the user's OK**, including on the screenshots. Changes to `README.md` and the notes from this review need no rebuild.
 10. Run `git fetch fotofieber`, then `publish.sh <tag> --check`, then `publish.sh <tag>`. It attaches the macOS and Windows ZIPs when they were built from the same source as the .deb.

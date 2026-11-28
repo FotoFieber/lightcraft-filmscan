@@ -39,7 +39,8 @@ BRANCH="$(git -C "$ROOT" symbolic-ref --short HEAD)"
 # docs/ is not left out: docs/whats-new.md is compiled into the app (crates/ui-egui/src/dialogs.rs).
 same_source() {
   [[ -n "$1" ]] && git -C "$ROOT" diff --quiet "$1" HEAD -- . ':(exclude)packaging/fotofieber' \
-    ':(exclude).github/workflows/fotofieber-build.yml' ':(exclude)README.md' &&
+    ':(exclude).github/workflows/fotofieber-build.yml' ':(exclude).github/workflows/fotofieber-mactest.yml' \
+    ':(exclude)README.md' &&
     git -C "$ROOT" diff --quiet "$1" HEAD -- packaging/fotofieber/README-package.md
 }
 built="$(cat "$OUT/BUILT_FROM" 2>/dev/null || true)"
