@@ -2,6 +2,25 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-28: v0.21.1-filmscan.17
+
+**Published** from `fa4dbe02` (packages built from `1cbc797c`; only `README.md` differs): .deb, Windows and macOS
+ZIPs, diff, patch series, SHA256SUMS and five new screenshots. The successor of `.10`.
+
+**Contents:** upstream `main` up to `4d838140`; Zap! on thin scans with a fogged edge; straighten by the scene; flip
+entries in the context menu. The notes warn that the catalog format goes from 13 to 14.
+
+**Testing**
+- The `.17` checks in the entry below.
+- The maintainer tested the Windows build. macOS is not tested.
+- The .deb's command-line tool reports `.17` and zaps all 25 scans of 202508BW.
+- The downloaded packages match SHA256SUMS.
+
+**Fork**
+- `main` synced to upstream before the push (the pre-push hook checks only commits the fork lacks).
+- `notify-services.yml` disabled on the fork, with the maintainer's OK; it did not run on publishing. Upstream's new
+  nightly workflows stay enabled: none of them has a schedule.
+
 ## 2026-11-28: local build 0.21.1+filmscan.17 (not published)
 
 **What**
