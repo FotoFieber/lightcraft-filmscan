@@ -2,6 +2,23 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-28: local build 0.21.1+filmscan.16 (not published)
+
+**What**
+- Zap!… and the Film Scan panel have a new choice, as `develop.negativeZap {straighten: frame|scene}`: level the crop
+  by the film's edge (the default, as before) or by the scene, as Auto Straighten reads it. The scene counts only when
+  it is within 1 degree of the film's edge. A crop of the user's own is never turned. German strings added.
+- On a thin scan the picture's long sides now sit 0.9 % inside the holes' inner edges instead of 1.5 %.
+- Version `.16`, installed as `~/.local/bin/lightcraft-cn`. No .deb, nothing pushed.
+
+**Testing**
+- 202508BW against the maintainer's crops: within 1 % 22 of 25 (18 in `.15`), all within 2 %. Angle, by the scene: a
+  median 0.000 degrees off, 24 of 25 within 0.25 (by the film's edge: 0.28 and 10). The maintainer set those angles
+  with Auto Straighten.
+- The 330 older truth crops, single and roll, straightened by the edge: no crop better or worse than in `.15`.
+- New engine test for the choice. `cargo xtask ci`: only the known version test failed; parity, layers, assets, roots,
+  wasm and `gpu_matches_cpu` passed. Headless screenshot of the German dialog and panel.
+
 ## 2026-11-28: study, crops and angle on 202508BW (no code change)
 
 **Crops** (the maintainer's, now in the truth file: 355 photos, set `bw0825`)
