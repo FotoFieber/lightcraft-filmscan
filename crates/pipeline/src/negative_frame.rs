@@ -58,6 +58,10 @@ const FILM_FRACTION: f32 = 0.08;
 /// The same for the whole film ([`detect_strip`]): dense film (a dark sky, dark water) may reach
 /// the holes' edge there, and the light through the holes sets the highlights.
 const STRIP_FILM_FRACTION: f32 = 0.02;
+/// How much larger the film found at [`STRIP_FILM_FRACTION`] must be, with both rows of sprocket
+/// holes, to replace what [`FILM_FRACTION`] found: a thin or fogged scan, whose denser film passed
+/// for holder.
+const THIN_FILM_GROWTH: f64 = 1.1;
 /// Width of the bands the first base guess reads, as a fraction of the shorter side.
 const BAND: f64 = 0.03;
 /// The part of each side a profile reads (the middle, away from the corners).
@@ -244,8 +248,29 @@ impl Frame {
 /// Finds the picture on `src` (linear Rec.2020, oriented as shown). `ratio` (the picture's length
 /// along the film over its height across it, see [`FORMATS`]) places a side the scan doesn't show
 /// and weighs the choice of sides; without it, sides are placed by the rebate across from them.
+///
+/// Where this finds no frame, or sprocket holes along one side only, a thin scan's film may be
+/// darker than the holder's threshold: then it looks again for far darker film, and takes that
+/// when it shows a larger strip with both rows of holes. Such a film's rebate may be fogged along
+/// one edge (a light leak): the holes are read against their own light, the base is the thinner
+/// rebate of the two rows, and the picture's long sides go by the holes.
 pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
-    let Strip { angle, turned, threshold, film, guess, light, mut holes } = strip(src, FILM_FRACTION)?;
+    let first = detect_at(src, ratio, false);
+    if first.as_ref().is_ok_and(|f| f.holes.iter().all(Option::is_some) || !f.sprockets) {
+        return first;
+    }
+    let area = |f: &Frame| f.film.width() * f.film.height();
+    match detect_at(src, ratio, true) {
+        Ok(thin) if thin.holes.iter().all(Option::is_some) && first.as_ref().map_or(true, |f| area(&thin) > area(f) * THIN_FILM_GROWTH) => Ok(thin),
+        _ => first,
+    }
+}
+
+/// [`detect`], on the usual film or (`thin`) on film down to [`STRIP_FILM_FRACTION`] of the
+/// scan's highlights.
+fn detect_at(src: &Rgb32f, ratio: Option<f64>, thin: bool) -> Result<Frame, String> {
+    let fraction = if thin { STRIP_FILM_FRACTION } else { FILM_FRACTION };
+    let Strip { angle, turned, threshold, film, guess, light, mut holes } = strip(src, fraction)?;
     let (w, h) = (turned.width, turned.height);
     // no holes found with a base guess that is picture: the brighter rebate passes for light, and
     // the holes run into it; look again against the brightest of the bands
@@ -267,25 +292,44 @@ pub fn detect(src: &Rgb32f, ratio: Option<f64>) -> Result<Frame, String> {
     // which are picture where the film fills the scan (a holder that shows no film edge)
     let found =
         if fills { holes_base(&turned, film, &holes, threshold, &light).or_else(|| strip_base(&turned, film, threshold, &guess)) } else { None };
-    let (guess, light) = match found {
+    let (mut guess, mut light) = match found {
         Some(b) => (b, Light::of(&b)),
         None => (guess, light),
     };
+    let mut thinnest = None;
+    if thin && let Some(open) = open_light(&turned) {
+        let through = Light { blue: f32::INFINITY, lum: open };
+        holes = hole_rows(&turned, film, threshold, &through);
+        thinnest = thinner_base(&turned, film, &holes, threshold, &through);
+        if let Some(b) = thinnest {
+            let of = Light::of(&b);
+            (guess, light) = (b, Light { lum: of.lum.min(open), ..of });
+        }
+    }
     let dist = distance(&turned, &guess, threshold, &light);
     let lum = turned.map(|p| (luma(p).max(0.0) + 1e-4).ln());
     // the film runs along the sprocket holes, else along the film's longer side
     let along_x = film.width() >= film.height();
     let gaps = frame_gaps(&lum, &turned, film, &holes, threshold, &light);
     let contrast = film_contrast(&dist, film);
-    let scan = Scan { dist: &dist, lum: &lum, img: &turned, light: &light, threshold, contrast, film, gaps: &gaps, along_x };
+    let scan = Scan { dist: &dist, lum: &lum, img: &turned, light: &light, threshold, contrast, film, gaps: &gaps, along_x, thin };
     let cands = Side::ALL.map(|side| scan.candidates(side));
     let ratio = ratio.filter(|r| r.is_finite() && *r > 0.0).map(|r| if along_x { r } else { 1.0 / r });
-    let (picture, sides_found) = choose(&cands, film, ratio).ok_or("no film frame found")?;
+    let (mut picture, sides_found) = choose(&cands, film, ratio).ok_or("no film frame found")?;
+    if thin && let [Some(near), Some(far)] = holes {
+        // a fogged rebate passes for picture: the long sides go just inside the holes
+        let gap = ((if along_x { film.height() } else { film.width() }) as f64 * HOLE_MARGIN).round() as usize;
+        let (a, b) = (near.inner + gap, far.inner.saturating_sub(gap));
+        if a < b {
+            picture = if along_x { Px { y0: a, y1: b, ..picture } } else { Px { x0: a, x1: b, ..picture } };
+        }
+        picture = trim_light(&turned, picture, along_x, &light);
+    }
     if sides_found < MIN_SIDES {
         return Err("no film frame found: too little of the frame's edges shows".into());
     }
     plausible(&picture, w, h)?;
-    let base = rebate_base(&turned, film, picture, threshold, &light);
+    let base = thinnest.map(|b| b.map(|x| f64::from(x).clamp(0.0, 1.0))).or_else(|| rebate_base(&turned, film, picture, threshold, &light));
     let norm = |r: Px| Rect::new(r.x0 as f64 / w as f64, r.y0 as f64 / h as f64, r.x1 as f64 / w as f64, r.y1 as f64 / h as f64);
     let across = if along_x { h } else { w } as f64;
     let holes = holes.map(|o| o.map(|b| Holes { outer: b.outer as f64 / across, inner: b.inner as f64 / across, whole: b.whole }));
@@ -907,6 +951,28 @@ fn holes_base(img: &Rgb32f, film: Px, holes: &[Option<HoleRow>; 2], threshold: f
     channel_median(&v)
 }
 
+/// `pic` without the lines at its ends along the film that are mostly light: past the film's end,
+/// which a fogged rebate lets pass for picture.
+fn trim_light(img: &Rgb32f, pic: Px, along_x: bool, light: &Light) -> Px {
+    let (lo, hi, a0, a1) = if along_x { (pic.x0, pic.x1, pic.y0, pic.y1) } else { (pic.y0, pic.y1, pic.x0, pic.x1) };
+    let lit = |l: usize| {
+        let n = (a0..a1).filter(|a| if along_x { px(img, l, *a) } else { px(img, *a, l) }.is_some_and(|p| light.is(p))).count();
+        n * 2 > a1.saturating_sub(a0)
+    };
+    let Some(first) = (lo..hi).find(|l| !lit(*l)) else { return pic };
+    let end = (first..hi).rev().find(|l| !lit(*l)).map_or(hi, |l| l + 1);
+    if along_x { Px { x0: first, x1: end, ..pic } } else { Px { y0: first, y1: end, ..pic } }
+}
+
+/// The base of the thinner rebate of the two rows of holes ([`holes_base`] on each alone): the
+/// film base where the other edge is fogged.
+fn thinner_base(img: &Rgb32f, film: Px, holes: &[Option<HoleRow>; 2], threshold: f32, light: &Light) -> Option<[f32; 3]> {
+    [[holes[0], None], [None, holes[1]]]
+        .iter()
+        .filter_map(|row| holes_base(img, film, row, threshold, light))
+        .max_by(|a, b| luma(*a).total_cmp(&luma(*b)))
+}
+
 fn channel_median(px: &[[f32; 3]]) -> Option<[f32; 3]> {
     Some([median(px.iter().map(|p| p[0]).collect())?, median(px.iter().map(|p| p[1]).collect())?, median(px.iter().map(|p| p[2]).collect())?])
 }
@@ -1140,6 +1206,8 @@ struct Scan<'a> {
     /// The gaps between frames along the film ([`frame_gaps`]).
     gaps: &'a [(usize, usize)],
     along_x: bool,
+    /// The film was found as thin ([`detect`]'s second look): its rebate may be fogged unevenly.
+    thin: bool,
 }
 
 impl Scan<'_> {
@@ -1228,6 +1296,13 @@ impl Scan<'_> {
             Some(n) if rebate > REBATE_MAX * self.contrast && n <= REBATE_MAX * self.contrast => (n, 1),
             _ => (rebate, skip),
         };
+        if self.thin && rebate > REBATE_MAX * self.contrast {
+            // a fogged rebate is far from the base too: the gate's edge shows it ends
+            let gates = gate_edges(&self.shares(side, start, &lines, reach), skip);
+            if !gates.is_empty() {
+                return gates.into_iter().chain(gaps).collect();
+            }
+        }
         if rebate > REBATE_MAX * self.contrast {
             // the picture (or something that isn't rebate) reaches the film's edge, unless a gap
             // between frames ends a neighbour's piece here
@@ -1549,6 +1624,49 @@ mod tests {
         assert!(f.holes[1].is_some_and(|h| !h.whole), "the cut holes at the bottom: {f:?}");
         let b = f.base.expect("the rebate shows");
         assert!(b.iter().zip([0.55, 0.5, 0.6]).all(|(a, w)| (a - w).abs() < 0.03), "{b:?}");
+    }
+
+    /// A thin scan of a B&W strip fogged along its top edge: the film base lets through a quarter
+    /// of the light at the bottom and a twentieth at the top, so the denser half of the film is
+    /// darker than a frame's threshold of the holes' light.
+    fn fogged(x: f64, y: f64) -> [f32; 3] {
+        const BW: [f32; 3] = [0.25, 0.235, 0.28];
+        if !inside(FILM, x, y) {
+            return [0.0003; 3];
+        }
+        // the strip ends: light past it
+        if x >= 800.0 {
+            return [1.0; 3];
+        }
+        let hole = |cy: f64| ((x - 40.0).rem_euclid(56.0) - 28.0).powi(2) / 100.0 + (y - cy).powi(2) / 196.0 < 1.0;
+        if hole(60.0) || hole(540.0) {
+            return [1.0; 3];
+        }
+        let fog = (0.2 + 0.8 * (y - 80.0) / 440.0).clamp(0.2, 1.0);
+        let scene = if inside(PIC, x, y) {
+            0.25 + 0.25 * ((x / 37.0).sin() * (y / 23.0).cos()).abs() + if ((x / 90.0) as i32 + (y / 70.0) as i32) % 2 == 0 { 0.2 } else { 0.0 }
+        } else {
+            1.0
+        };
+        BW.map(|c| c * (fog * scene) as f32)
+    }
+
+    #[test]
+    fn finds_the_frame_on_a_thin_scan_with_a_fogged_edge() {
+        let m = SRGB.to_space(&REC2020).to_f32();
+        let s = Rgb32f::from_fn(W, H, |x, y| {
+            let p = fogged(x as f64 + 0.5, y as f64 + 0.5);
+            m.map(|r| r[0] * p[0] + r[1] * p[1] + r[2] * p[2])
+        });
+        let f = detect(&s, None).unwrap();
+        assert!(near(f.film, FILM, 0.012), "{f:?}");
+        // the long sides go just inside the holes, which end at 74 and 526 of the 600 rows
+        assert!((f.picture.y0 * 600.0 - 82.0).abs() < 8.0 && (f.picture.y1 * 600.0 - 518.0).abs() < 8.0, "{f:?}");
+        assert!((f.picture.x0 * 900.0 - 120.0).abs() < 8.0 && f.picture.x1 * 900.0 < 802.0, "{f:?}");
+        assert!(f.holes.iter().all(Option::is_some), "both rows of holes: {f:?}");
+        // the thinnest film is the base, not the fogged edge
+        let b = f.base.expect("the rebate shows");
+        assert!(b.iter().zip([0.25, 0.235, 0.28]).all(|(a, w)| (a - w).abs() < 0.03), "{b:?}");
     }
 
     #[test]
