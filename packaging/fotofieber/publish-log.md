@@ -2,6 +2,23 @@
 
 One entry per release, check or study, newest first. The procedure is in [publish.md](publish.md).
 
+## 2026-11-28: study, crops and angle on 202508BW (no code change)
+
+**Crops** (the maintainer's, now in the truth file: 355 photos, set `bw0825`)
+- `.15` against them: 18 of 25 within 1 %, all within 2 %. They are about 0.7 % wider at the top and 0.5 % at the
+  bottom than Zap!'s, in the path that goes by the sprocket holes.
+
+**Angle**
+- Zap!'s angle (the holder's edge) is a median 0.28 degrees off on this roll. Auto Straighten, run after Zap!, gives
+  the maintainer's angle on 22 of 25 within 0.02 degrees; they used that tool, so this roll alone proves little.
+- The other 326 zapped truth photos: on the 50 whose angle the maintainer changed, Auto Straighten is closer than
+  Zap! (median 0.24 against 0.42 degrees, within 0.25: 26 against 13). On the 276 where they kept Zap!'s angle, it
+  differs by a median 0.24 degrees, by more than 1 degree on 23.
+
+**Recommendation**
+- Offer straightening by the scene as a choice in Zap!, falling back to the frame's angle where the two differ by more
+  than 1 degree; keep the frame's angle as the default. Narrow the gap to the holes in the thin-film path.
+
 ## 2026-11-28: local build 0.21.1+filmscan.15 (not published)
 
 **Problem**
