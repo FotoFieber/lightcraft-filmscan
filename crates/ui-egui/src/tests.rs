@@ -13,6 +13,7 @@ fn settle_budget_only_expands_for_llvm_coverage_runs() {
 }
 
 mod activity;
+mod aidefringe;
 mod album_picker;
 mod album_remove;
 mod alt_preview;
@@ -48,6 +49,7 @@ mod drop_import;
 mod edit_layout;
 mod empty_library;
 mod error_kinds;
+mod export_dropdowns;
 mod filmstrip;
 mod filmstrip_drag;
 mod find_similar;
@@ -90,6 +92,7 @@ mod move_folder;
 mod negative;
 mod offline;
 mod open_lightroom;
+mod panel_keys;
 mod panel_restore;
 pub(super) mod panels;
 mod preset_favorites;
